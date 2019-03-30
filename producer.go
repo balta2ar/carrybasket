@@ -34,9 +34,6 @@ type BlockProducer interface {
 	Reset()
 }
 
-// ctor: blockSize, fast hasher, strong hasher, 2 caches
-// runtime: reader
-
 type blockProducer struct {
 	blockSize       int
 	fastHasher      hash.Hash32
@@ -45,10 +42,10 @@ type blockProducer struct {
 	strongHashCache BlockCache
 
 	offset      int    // current reading offset
+	cutoff      int    // can't rewind backwards earlier than this cut-off offset
 	bytesRemain int    // how many bytes remain in the input
-	buffer      []byte // buffer into which we read data from the input
+	//buffer      []byte // buffer into which we read data from the input
 	content     []byte // accumulated content so far that has not been emitted
-	fastHash    []byte // current fast hash value
 }
 
 func NewBlockProducer(
@@ -66,10 +63,10 @@ func NewBlockProducer(
 		strongHashCache: strongHashCache,
 
 		offset:      0,
+		cutoff:      0,
 		bytesRemain: 0,
-		buffer:      nil,
+		//buffer:      nil,
 		content:     nil,
-		fastHash:    nil,
 	}
 	producer.Reset()
 	return producer
@@ -77,9 +74,9 @@ func NewBlockProducer(
 
 func (bp *blockProducer) Reset() {
 	bp.offset = 0
-	bp.buffer = make([]byte, 1)
+	bp.cutoff = 0
+	//bp.buffer = make([]byte, 1)
 	bp.content = make([]byte, 0)
-	bp.fastHash = make([]byte, 4)
 }
 
 // how many bytes in the input is left
@@ -92,34 +89,82 @@ func inputBytesRemain(r StackedReadSeeker) int {
 	return int(size - current)
 }
 
-// take the min of what remains and our regular block size
-func (bp *blockProducer) windowSize() int {
+// Take the min of what remains and our regular block size. This is
+// used to advance position in the beginning of the scan when there
+// could be less data than our block size.
+func (bp *blockProducer) windowSizeForward() int {
 	if bp.bytesRemain < bp.blockSize {
 		return bp.bytesRemain
 	}
 	return bp.blockSize
 }
 
+// Calculate how far back we can go from the current position. This is
+// used when fast checksum has matched, and we need to rewind backwards
+// to read data to calculate strong checksum. Cutoff barrier is respected.
+// For example, emitting a strong hash updates the cutoff position since
+// after we have emitted strong hash, we can't rewind back past it to
+// overlap it.
+func (bp *blockProducer) windowSizeBackward() int {
+	// Ideally we'd like to rewind back bp.blockSize bytes.
+	// But there are edge cases:
+	// 1) We're at the beginning of the input, and our offset < blockSize,
+	//    we can't go back past offset (which is zero at the moment).
+	// 2) We're past cut-off, updated by emitHash. We can't go back past
+	//    that barrier point at which we emitted strong hash.
+	leftBarrier := min(0, bp.offset-bp.blockSize)
+	leftBarrier = max(leftBarrier, bp.cutoff)
+	return bp.offset - leftBarrier
+}
+
 func (bp *blockProducer) tryEmitContent(blocks []Block) []Block {
 	if len(bp.content) > 0 {
-		contentBlock := NewContentBlock(uint64(bp.offset), uint64(len(bp.content)), bp.content)
-		blocks = append(blocks, contentBlock)
+		//contentBlock := NewContentBlock(uint64(bp.offset), uint64(len(bp.content)), bp.content)
+		//blocks = append(blocks, contentBlock)
+		fmt.Println("trying to emit content, content found")
+		// TODO: CHECK THIS DIFFERENCE offset-len(content)
+		blocks = bp.emitContent(blocks, bp.offset-len(bp.content), bp.content)
+		//fmt.Printf("content (%v) has been emitted (len %v), resetting\n", string(bp.content), len(bp.content))
 		bp.content = make([]byte, 0)
 	}
 	return blocks
 }
 
+func (bp *blockProducer) emitContent(blocks []Block, offset int, content []byte) []Block {
+	contentBlock := NewContentBlock(uint64(offset), uint64(len(content)), content)
+	blocks = append(blocks, contentBlock)
+	fmt.Printf("content (%v) has been emitted (len %v), resetting\n", string(content), len(content))
+	return blocks
+}
+
 func (bp *blockProducer) tryEmitHash(blocks []Block, r StackedReadSeeker) ([]Block, bool) {
 	if cachedBlock, ok := bp.findFastAndStrongHash(r); ok {
-		// fast & strong hashes have been found
+		// Fast & strong hashes have been found.
+		// But before we proceed, there could be content before this
+		// hashed block which we haven't emitted yet. We can check current
+		// content size whether it's bigger than our backward lookup
+		// window.
+		partialContentSize := len(bp.content) - bp.windowSizeBackward()
+		if partialContentSize > 0 {
+			partialContent := bp.content[0:partialContentSize]
+			blocks = bp.emitContent(blocks, bp.offset-len(bp.content), partialContent)
+		}
+
 		blocks = bp.emitHash(blocks, cachedBlock.(HashedBlock))
-		// hash has been emitted, we need to clear current content
+		// hash has been emitted, we need to clear current content and hashes
+		bp.cutoff = bp.offset
 		bp.content = make([]byte, 0)
+		bp.fastHasher.Reset()
+		bp.strongHasher.Reset()
+
+		fmt.Println("hash has been emitted")
 		return blocks, true
 	}
 
+	fmt.Println("no hash found, remember content")
 	// remember current content
-	bp.content = append(bp.content, bp.buffer...)
+	//bp.content = append(bp.content, bp.buffer...)
+	//bp.content = make([]byte, 0)
 	return blocks, false
 }
 
@@ -133,10 +178,7 @@ func (bp *blockProducer) readCurrentWindow(r StackedReadSeeker) []byte {
 	r.Push()
 	defer r.Pop()
 
-	bytesToRewind := bp.blockSize
-	if bp.offset < bytesToRewind {
-		bytesToRewind = bp.offset
-	}
+	bytesToRewind := bp.windowSizeBackward()
 	if _, err := r.Seek(int64(-bytesToRewind), io.SeekCurrent); err != nil {
 		panic("unexpected seek error")
 	}
@@ -152,16 +194,19 @@ func (bp *blockProducer) readCurrentWindow(r StackedReadSeeker) []byte {
 // are available in caches
 func (bp *blockProducer) findFastAndStrongHash(r StackedReadSeeker) (Block, bool) {
 	// first, check fast hash
-	_, _ = bp.fastHasher.Write(bp.buffer)
-	//binary.LittleEndian.PutUint32(bp.fastHash, bp.fastHasher.Sum32())
 	if _, ok := bp.fastHashCache.Get(bp.fastHasher.Sum(nil)); !ok {
+		fmt.Println("no match for fast hash")
 		return nil, false
 	}
 
 	// fast hash matched, compute and check strong hash
+	fmt.Println("fast has matched, trying strong hash")
 	windowContent := bp.readCurrentWindow(r)
+	fmt.Printf("current window size for strong hash: %v (window value '%v')\n", len(windowContent), string(windowContent))
+	bp.strongHasher.Reset()
 	bp.strongHasher.Write(windowContent)
 	block, ok := bp.strongHashCache.Get(bp.strongHasher.Sum(nil))
+	fmt.Printf("strong hash lookup result: %v\n", ok)
 	return block, ok
 }
 
@@ -174,35 +219,48 @@ func (bp *blockProducer) Scan(r StackedReadSeeker) []Block {
 	bp.bytesRemain = inputBytesRemain(r)
 
 	// the first step is to read the window of size equals to the block size
-	advancedBy, err := bp.advance(r, bp.windowSize())
+	advancedBy, err := bp.advance(r, bp.windowSizeForward())
 	if err != nil {
 		return blocks
 	}
 	fmt.Printf("start advanced by %v\n", advancedBy)
 
 	for {
+		fmt.Println("LOOP START")
 		blocks, _ = bp.tryEmitHash(blocks, r)
 		advancedBy, err := bp.advance(r, 1)
 		if err != nil {
 			break
 		}
-		fmt.Printf("loop advanced by %v\n", advancedBy)
+		fmt.Printf("LOOP END advanced by %v\n", advancedBy)
 	}
 
+	fmt.Printf("LOOP FINISHED; content len %v\n", len(bp.content))
+	fmt.Println("trying to emit final hash")
+	fmt.Printf("LEN BEFORE EMIT HASH: %v\n", len(bp.content))
+	blocks, _ = bp.tryEmitHash(blocks, r)
+	fmt.Printf("LEN AFTER EMIT HASH: %v\n", len(bp.content))
+	fmt.Println("trying to emit final content")
+	// this should not have effect -- TODO: remove it
 	blocks = bp.tryEmitContent(blocks)
 	return blocks
 }
 
 // Try reading n bytes from reader r
 func (bp *blockProducer) advance(r StackedReadSeeker, n int) (int, error) {
-	bp.buffer = make([]byte, n)
-	n, err := r.Read(bp.buffer)
+	buffer := make([]byte, n)
+	n, err := r.Read(buffer)
 	if err != nil {
 		//return errors.Wrap(err, "Cant read from reader")
 		fmt.Printf("cannot read: %s\n", err)
 		return n, err
 	}
+	_, _ = bp.fastHasher.Write(buffer)
 	bp.offset += n
 	bp.bytesRemain -= n
+
+	bp.content = append(bp.content, buffer...)
+	//bp.content = make([]byte, 0)
+
 	return n, nil
 }

@@ -109,6 +109,7 @@ func TestBlockProducer_EmitTwoHashedSameSize(t *testing.T) {
 	strongHash.Write([]byte("abcd"))
 	strongChecksum1 := strongHash.Sum(nil)
 	strongCache.Set(strongChecksum1, NewHashedBlock(300, 4, strongChecksum1))
+	strongHash.Reset()
 	strongHash.Write([]byte("1234"))
 	strongChecksum2 := strongHash.Sum(nil)
 	strongCache.Set(strongChecksum2, NewHashedBlock(400, 4, strongChecksum2))
@@ -142,15 +143,17 @@ func TestBlockProducer_EmitTwoHashedSecondIsSmaller(t *testing.T) {
 	// prepare caches
 	_, _ = fastHash.Write([]byte("abcd"))
 	fastCache.Set(fastHash.Sum(nil), NewHashedBlock(100, 4, fastHash.Sum(nil)))
+	fastHash.Reset()
 	_, _ = fastHash.Write([]byte("123"))
-	fastCache.Set(fastHash.Sum(nil), NewHashedBlock(200, 4, fastHash.Sum(nil)))
+	fastCache.Set(fastHash.Sum(nil), NewHashedBlock(200, 3, fastHash.Sum(nil)))
 
 	strongHash.Write([]byte("abcd"))
 	strongChecksum1 := strongHash.Sum(nil)
 	strongCache.Set(strongChecksum1, NewHashedBlock(300, 4, strongChecksum1))
+	strongHash.Reset()
 	strongHash.Write([]byte("123"))
 	strongChecksum2 := strongHash.Sum(nil)
-	strongCache.Set(strongChecksum2, NewHashedBlock(400, 4, strongChecksum2))
+	strongCache.Set(strongChecksum2, NewHashedBlock(400, 3, strongChecksum2))
 
 	// reset hashing devices
 	fastHash.Reset()
