@@ -62,8 +62,9 @@ func update(d *digest, p []byte) {
 
 /// Perform rolling update
 func (d *digest) Write(p []byte) (nn int, err error) {
+	nn = len(p)
 	update(d, p)
-	return len(p), nil
+	return
 }
 
 func (d *digest) Sum32() uint32 { return uint32(d.digest) }

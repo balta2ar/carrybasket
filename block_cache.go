@@ -22,3 +22,4 @@ func (bc *blockCache) Get(hash []byte) (Block, bool) {
 func (bc *blockCache) Set(hash []byte, block Block) {
 	(*bc)[string(hash)] = block
 }
+

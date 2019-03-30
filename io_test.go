@@ -10,8 +10,8 @@ import (
 func TestStackedReadSeeker_PushPop(t *testing.T) {
 	r := strings.NewReader("abc")
 	srs := NewStackedReadSeeker(r)
-	assert.Nil(t, srs.Push())
-	assert.Nil(t, srs.Pop())
+	assert.NotPanics(t, srs.Push)
+	assert.NotPanics(t, srs.Pop)
 }
 
 func TestStackedReadSeeker_DoubleRead(t *testing.T) {
@@ -56,8 +56,8 @@ func TestStackedReadSeeker_PopMisuse(t *testing.T) {
 	r := strings.NewReader("abc")
 	var srs StackedReadSeeker = NewStackedReadSeeker(r)
 
-	assert.Error(t, srs.Pop())
+	assert.Panics(t, srs.Pop)
 	srs.Push()
-	assert.NoError(t, srs.Pop())
-	assert.Error(t, srs.Pop())
+	assert.NotPanics(t, srs.Pop)
+	assert.Panics(t, srs.Pop)
 }

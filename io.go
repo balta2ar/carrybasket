@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/pkg/errors"
 	"io"
 )
 
@@ -9,8 +8,8 @@ import (
 /// remembered reading position.
 type StackedReadSeeker interface {
 	io.ReadSeeker
-	Push() error /// remember current position
-	Pop() error  /// restore previous position
+	Push() /// remember current position
+	Pop()  /// restore previous position
 }
 
 type stackedReadSeeker struct {
@@ -25,27 +24,25 @@ func NewStackedReadSeeker(r io.ReadSeeker) *stackedReadSeeker {
 	}
 }
 
-func (srs *stackedReadSeeker) Push() error {
+func (srs *stackedReadSeeker) Push() {
 	offset, err := srs.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return err
+		panic("unexpected error during Seek")
 	}
 
 	srs.offsets = append(srs.offsets, offset)
-	return nil
+	return
 }
 
-func (srs *stackedReadSeeker) Pop() error {
+func (srs *stackedReadSeeker) Pop() {
 	if len(srs.offsets) == 0 {
-		return errors.New("popping from an empty stack")
+		panic("popping from an empty stack")
 	}
 
 	n := len(srs.offsets)
 	_, err := srs.Seek(srs.offsets[n-1], io.SeekStart)
 	if err != nil {
-		return errors.Wrap(err, "Cannot seek")
-
+		panic("unexpected error during Seek")
 	}
 	srs.offsets = srs.offsets[:n-1]
-	return nil
 }

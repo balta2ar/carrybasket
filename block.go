@@ -1,18 +1,24 @@
 package main
 
+/// Block of data. Either a content or hash of a content.
 type Block interface {
+	/// Offset of the block in the file
+	/// (may be different for client and server)
 	Offset() uint64
+	/// Size of the block. May be smaller than default block size
+	/// 1) for fast hash block when it precedes a strong hash block,
+	/// 2) for both types of hashes at the end of a file.
 	Size() uint64
 }
 
 type ContentBlock interface {
 	Block
-	Content() []byte
+	Content() []byte /// Actual content of a file.
 }
 
 type HashedBlock interface {
 	Block
-	HashSum() []byte
+	HashSum() []byte /// Hash of the specified file block.
 }
 
 type block struct {
