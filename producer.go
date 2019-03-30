@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/binary"
 	"fmt"
 	"hash"
 	"io"
@@ -31,7 +30,7 @@ import (
 /// + fast hash lookuper
 /// + strong hash lookuper
 type BlockProducer interface {
-	Scan(r io.ReadSeeker) []Block
+	Scan(r StackedReadSeeker) []Block
 	Reset()
 }
 
@@ -45,9 +44,11 @@ type blockProducer struct {
 	fastHashCache   BlockCache
 	strongHashCache BlockCache
 
-	offset   uint64
-	smallBuf []byte
-	fastHash []byte
+	offset      int    // current reading offset
+	bytesRemain int    // how many bytes remain in the input
+	buffer      []byte // buffer into which we read data from the input
+	content     []byte // accumulated content so far that has not been emitted
+	fastHash    []byte // current fast hash value
 }
 
 func NewBlockProducer(
@@ -58,15 +59,17 @@ func NewBlockProducer(
 	strongHashCache BlockCache,
 ) *blockProducer {
 	producer := &blockProducer{
-		blockSize,
-		fastHasher,
-		strongHasher,
-		fastHashCache,
-		strongHashCache,
+		blockSize:       blockSize,
+		fastHasher:      fastHasher,
+		strongHasher:    strongHasher,
+		fastHashCache:   fastHashCache,
+		strongHashCache: strongHashCache,
 
-		0,
-		nil,
-		nil,
+		offset:      0,
+		bytesRemain: 0,
+		buffer:      nil,
+		content:     nil,
+		fastHash:    nil,
 	}
 	producer.Reset()
 	return producer
@@ -74,53 +77,132 @@ func NewBlockProducer(
 
 func (bp *blockProducer) Reset() {
 	bp.offset = 0
-	bp.smallBuf = make([]byte, 1)
+	bp.buffer = make([]byte, 1)
+	bp.content = make([]byte, 0)
 	bp.fastHash = make([]byte, 4)
 }
 
-func (bp *blockProducer) Scan(r io.ReadSeeker) []Block {
-	blocks := make([]Block, 0)
+// how many bytes in the input is left
+func inputBytesRemain(r StackedReadSeeker) int {
+	r.Push()
+	defer r.Pop()
 
-	for {
-		err := bp.advance(r)
-		if err != nil {
-			break
-		}
+	current, _ := r.Seek(0, io.SeekCurrent)
+	size, _ := r.Seek(0, io.SeekEnd)
+	return int(size - current)
+}
 
-		_, _ = bp.fastHasher.Write(bp.smallBuf)
-		binary.LittleEndian.PutUint32(bp.fastHash, bp.fastHasher.Sum32())
-
-		_, ok := bp.fastHashCache.Get(bp.fastHash)
-		if ok {
-			// fast has been found
-
-			// compute strong
-			// check strong
-			// ? emit HashedBlock
-			fmt.Println("Emitting hashed block")
-			block := NewHashedBlock(bp.offset, 4, []byte("hash"))
-			blocks = append(blocks, block)
-		} else {
-			// emit raw content
-			fmt.Println("Emitting raw content")
-			block := NewContentBlock(bp.offset, 256, []byte("content"))
-			blocks = append(blocks, block)
-		}
+// take the min of what remains and our regular block size
+func (bp *blockProducer) windowSize() int {
+	if bp.bytesRemain < bp.blockSize {
+		return bp.bytesRemain
 	}
+	return bp.blockSize
+}
 
+func (bp *blockProducer) tryEmitContent(blocks []Block) []Block {
+	if len(bp.content) > 0 {
+		contentBlock := NewContentBlock(uint64(bp.offset), uint64(len(bp.content)), bp.content)
+		blocks = append(blocks, contentBlock)
+		bp.content = make([]byte, 0)
+	}
 	return blocks
 }
 
-func (bp *blockProducer) advance(r io.ReadSeeker) error {
-	n, err := r.Read(bp.smallBuf)
+func (bp *blockProducer) tryEmitHash(blocks []Block, r StackedReadSeeker) ([]Block, bool) {
+	if cachedBlock, ok := bp.findFastAndStrongHash(r); ok {
+		// fast & strong hashes have been found
+		blocks = bp.emitHash(blocks, cachedBlock.(HashedBlock))
+		// hash has been emitted, we need to clear current content
+		bp.content = make([]byte, 0)
+		return blocks, true
+	}
+
+	// remember current content
+	bp.content = append(bp.content, bp.buffer...)
+	return blocks, false
+}
+
+func (bp *blockProducer) emitHash(blocks []Block, hashedBlock HashedBlock) []Block {
+	offset := uint64(bp.offset) - hashedBlock.Size()
+	block := NewHashedBlock(offset, hashedBlock.Size(), hashedBlock.HashSum())
+	return append(blocks, block)
+}
+
+func (bp *blockProducer) readCurrentWindow(r StackedReadSeeker) []byte {
+	r.Push()
+	defer r.Pop()
+
+	bytesToRewind := bp.blockSize
+	if bp.offset < bytesToRewind {
+		bytesToRewind = bp.offset
+	}
+	if _, err := r.Seek(int64(-bytesToRewind), io.SeekCurrent); err != nil {
+		panic("unexpected seek error")
+	}
+
+	buffer := make([]byte, bytesToRewind)
+	if _, err := r.Read(buffer); err != nil {
+		panic("unexpected read error")
+	}
+	return buffer
+}
+
+// check whether fast & strong hashes of the current window
+// are available in caches
+func (bp *blockProducer) findFastAndStrongHash(r StackedReadSeeker) (Block, bool) {
+	// first, check fast hash
+	_, _ = bp.fastHasher.Write(bp.buffer)
+	//binary.LittleEndian.PutUint32(bp.fastHash, bp.fastHasher.Sum32())
+	if _, ok := bp.fastHashCache.Get(bp.fastHasher.Sum(nil)); !ok {
+		return nil, false
+	}
+
+	// fast hash matched, compute and check strong hash
+	windowContent := bp.readCurrentWindow(r)
+	bp.strongHasher.Write(windowContent)
+	block, ok := bp.strongHashCache.Get(bp.strongHasher.Sum(nil))
+	return block, ok
+}
+
+/// Scan the input and emit a slice of blocks with contents or hashes.
+/// Blocks with content will be written by the server into the file.
+/// Blocks with hashes indicate that server already has this block on
+/// its side so it can reuse it.
+func (bp *blockProducer) Scan(r StackedReadSeeker) []Block {
+	blocks := make([]Block, 0)
+	bp.bytesRemain = inputBytesRemain(r)
+
+	// the first step is to read the window of size equals to the block size
+	advancedBy, err := bp.advance(r, bp.windowSize())
+	if err != nil {
+		return blocks
+	}
+	fmt.Printf("start advanced by %v\n", advancedBy)
+
+	for {
+		blocks, _ = bp.tryEmitHash(blocks, r)
+		advancedBy, err := bp.advance(r, 1)
+		if err != nil {
+			break
+		}
+		fmt.Printf("loop advanced by %v\n", advancedBy)
+	}
+
+	blocks = bp.tryEmitContent(blocks)
+	return blocks
+}
+
+// Try reading n bytes from reader r
+func (bp *blockProducer) advance(r StackedReadSeeker, n int) (int, error) {
+	bp.buffer = make([]byte, n)
+	n, err := r.Read(bp.buffer)
 	if err != nil {
 		//return errors.Wrap(err, "Cant read from reader")
 		fmt.Printf("cannot read: %s\n", err)
-		return err
+		return n, err
 	}
-	if n == 0 {
-		return nil
-	}
-	bp.offset += uint64(n)
-	return nil
+	bp.offset += n
+	bp.bytesRemain -= n
+	return n, nil
 }
