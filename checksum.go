@@ -17,49 +17,30 @@ type digest struct {
 	index     int    // current position in the circular buffer
 }
 
-/// Reset is not actually supported because of the nature of rolling
-/// checksum. First we initialize it with some block and then we roll,
-/// however, while we roll, we loose the data we were initialized with.
-/// We could separately store we were initially given, but it's easier
-/// to just create new hasher and init again.
-func (d *digest) Reset() {}
+/// Reset checksum state to initial
+func (d *digest) Reset() {
+	d.digest = Init
+	d.circle = make([]byte, d.blockSize)
+	d.index = 0
+}
 
 /// Rolling checksum taken from rsync thesis, inspired by Adler-32.
 /// The expected way to use this checksum is:
 /// 1. Initialize it with some block using NewMackerras
 /// 2. Feed it with one byte a time using Write
-func NewMackerras(blockSize int, p []byte) hash.Hash32 {
+func NewMackerras(blockSize int) hash.Hash32 {
 	d := &digest{
 		blockSize: blockSize,
 		digest:    Init,
-		circle:    nil,
+		circle:    make([]byte, blockSize),
 		index:     0,
 	}
-	d.init(p)
 	return d
 }
 
 func (d *digest) Size() int { return Size }
 
 func (d *digest) BlockSize() int { return d.blockSize }
-
-// Calculate digest of the initial block
-func (d *digest) init(p []byte) {
-	L := len(p)
-	if L == 0 {
-		panic("cannot initialize on an empty block")
-	}
-
-	var r1, r2 uint32
-	for i := 0; i < L; i++ {
-		r1 = (r1 + uint32(p[i])) % M
-		r2 = (r2 + uint32(L-i)*uint32(p[i])) % M
-	}
-	d.digest = (r1 & 0xffff) | (r2 << 16)
-	d.circle = append(p[:0:0], p...)
-	d.index = 0
-
-}
 
 func update(d *digest, p []byte) {
 	r1, r2 := uint32(d.digest&0xffff), uint32(d.digest>>16)
