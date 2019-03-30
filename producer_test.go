@@ -2,7 +2,9 @@ package main
 
 import (
 	"crypto/md5"
+	"fmt"
 	"github.com/stretchr/testify/assert"
+	"hash"
 	"hash/adler32"
 	"strings"
 	"testing"
@@ -49,6 +51,7 @@ func TestBlockProducer_EmitSeveralBytesOfContentBlockOfOneByte(t *testing.T) {
 	result := producer.Scan(r)
 	assert.Len(t, result, 1)
 	block := result[0].(ContentBlock)
+	assert.Equal(t, uint64(3), block.Size())
 	assert.Equal(t, []byte("abc"), block.Content())
 }
 
@@ -58,6 +61,7 @@ func TestBlockProducer_EmitSeveralBytesOfContentBlockOfFourBytes(t *testing.T) {
 	result := producer.Scan(r)
 	assert.Len(t, result, 1)
 	block := result[0].(ContentBlock)
+	assert.Equal(t, uint64(8), block.Size())
 	assert.Equal(t, []byte("abcdefgh"), block.Content())
 }
 
@@ -171,4 +175,148 @@ func TestBlockProducer_EmitTwoHashedSecondIsSmaller(t *testing.T) {
 	assert.Equal(t, strongChecksum2, block2.HashSum())
 	assert.Equal(t, uint64(4), block2.Offset())
 	assert.Equal(t, uint64(3), block2.Size())
+}
+
+//type thash struct{ value string }
+//type tcontent struct{ value string }
+//type toutput struct {
+//	offset  uint64
+//	size    uint64
+//	tcontent string
+//	//hash    []byte
+//}
+//
+//type tinputs []interface{}
+
+type blockProducerTestStand struct {
+	fastHash    hash.Hash
+	strongHash  hash.Hash
+	fastCache   BlockCache
+	strongCache BlockCache
+
+	inputBlocks []Block
+	offset      uint64
+	//fastChecksums   [][]byte
+	//strongChecksums [][]byte
+}
+
+func (ts *blockProducerTestStand) addHash(value string) {
+	O, L := ts.offset, uint64(len(value))
+
+	ts.fastHash.Reset()
+	_, _ = ts.fastHash.Write([]byte(value))
+	ts.fastCache.Set(ts.fastHash.Sum(nil), NewHashedBlock(O, L, ts.fastHash.Sum(nil)))
+	//ts.fastChecksums = append(ts.fastChecksums, ts.fastHash.Sum(nil))
+
+	ts.strongHash.Reset()
+	_, _ = ts.strongHash.Write([]byte(value))
+	ts.strongCache.Set(ts.strongHash.Sum(nil), NewHashedBlock(O, L, ts.strongHash.Sum(nil)))
+	//ts.strongChecksums = append(ts.strongChecksums, ts.strongHash.Sum(nil))
+
+	ts.inputBlocks = append(ts.inputBlocks, NewHashedBlock(O, L, ts.strongHash.Sum(nil)))
+	ts.offset += L
+}
+
+func (ts *blockProducerTestStand) addContent(value string) {
+	O, L := ts.offset, uint64(len(value))
+
+	ts.inputBlocks = append(ts.inputBlocks, NewContentBlock(O, L, []byte(value)))
+	ts.offset += L
+}
+
+func (ts *blockProducerTestStand) verify(t *testing.T, blocks []Block) {
+	assert.Len(t, blocks, len(ts.inputBlocks))
+	for i, block := range ts.inputBlocks {
+		assert.Equal(t, block.Offset(), blocks[i].Offset())
+		assert.Equal(t, block.Size(), blocks[i].Size())
+		assert.IsType(t, block, blocks[i])
+		switch inputBlock := block.(type) {
+		case HashedBlock:
+			actualBlock := blocks[i].(HashedBlock)
+			fmt.Printf("hashed block %v\n", actualBlock)
+			assert.Equal(t, inputBlock.HashSum(), actualBlock.HashSum())
+		case ContentBlock:
+			actualBlock := blocks[i].(ContentBlock)
+			fmt.Printf("content block %v\n", actualBlock)
+			assert.Equal(t, inputBlock.Content(), actualBlock.Content())
+		}
+	}
+}
+
+func TestBlockProducer_MultipleTestCases(t *testing.T) {
+	blockSize := 4
+	fastHash := NewMackerras(blockSize)
+	strongHash := md5.New()
+	fastCache := NewBlockCache()
+	strongCache := NewBlockCache()
+	producer := NewBlockProducer(blockSize, fastHash, strongHash, fastCache, strongCache)
+
+	stand := blockProducerTestStand{
+		fastHash,
+		strongHash,
+		fastCache,
+		strongCache,
+
+		make([]Block, 0),
+		0,
+		//make([][]byte, 0),
+		//make([][]byte, 0),
+	}
+
+	//
+	//// describe input tests
+	//var testInputs = []struct {
+	//	blocks tinputs // []interface{}
+	//}{
+	//	{tinputs{thash{"abcd"}, thash{"1234"}}},
+	//	{tinputs{thash{"abcd"}, thash{"123"}}},
+	//}
+	//
+	//var expectedOutputs [][]toutput
+	//var fastHashes [][]byte
+	//var strongHashes[][]byte
+	//
+	//// convert input tests to expected toutput
+	//var offset uint64 = 0
+	//for _, testInput := range testInputs {
+	//	var testOutput []toutput
+	//	for _, input := range testInput.blocks {
+	//		switch testBlock := input.(type) {
+	//		case thash:
+	//			O, L := uint64(offset), uint64(len(testBlock.value))
+	//			testOutput = append(testOutput, toutput{
+	//				O, L, testBlock.value,
+	//			})
+	//			fastHash.Reset()
+	//			_,_ = fastHash.Write([]byte(testBlock.value))
+	//			fastCache.Set(fastHash.Sum(nil), NewHashedBlock(O, L, fastHash.Sum(nil)))
+	//			fastHashes = append(fastHashes, fastHash.Sum(nil))
+	//
+	//			strongHash.Reset()
+	//			_,_ = strongHash.Write([]byte(testBlock.value))
+	//			strongCache.Set(strongHash.Sum(nil), NewHashedBlock(O, L, strongHash.Sum(nil)))
+	//			strongHashes = append(strongHashes, strongHash.Sum(nil))
+	//			fmt.Println("hash")
+	//		case tcontent:
+	//			O, L := uint64(offset), uint64(len(testBlock.value))
+	//			testOutput = append(testOutput, toutput{
+	//				O, L, testBlock.value,
+	//			})
+	//			fmt.Println("content")
+	//		default:
+	//			panic("unknown test input type")
+	//		}
+	//	}
+	//	expectedOutputs = append(expectedOutputs, testOutput)
+	//}
+
+	stand.addHash("abcd")
+	stand.addContent("123")
+
+	fastHash.Reset()
+	strongHash.Reset()
+
+	r := NewStackedReadSeeker(strings.NewReader("abcd123"))
+	blocks := producer.Scan(r)
+	stand.verify(t, blocks)
 }
