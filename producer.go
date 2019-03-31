@@ -5,6 +5,11 @@ import (
 	"io"
 )
 
+/// BlockProducer runs on the client and scans the input file to detect
+/// which parts of it are present on the server using fast & strong
+/// hashes from the server. The missing parts are produced as content
+/// blocks and should be sent to the server to apply changes using
+/// ContentReconstructor.
 type BlockProducer interface {
 	Scan(r StackedReadSeeker) []Block
 	Reset()

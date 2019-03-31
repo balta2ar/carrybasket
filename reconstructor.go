@@ -30,6 +30,8 @@ func (b byOffset) Len() int           { return len(b) }
 func (b byOffset) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 func (b byOffset) Less(i, j int) bool { return b[i].Offset() < b[j].Offset() }
 
+/// Reconstruct the file from the given blocks into the given writer w.
+/// Return the final offset, which is equal to file size.
 func (cr *contentReconstructor) Reconstruct(blocks []Block, w io.Writer) uint64 {
 	var offset uint64
 
@@ -45,12 +47,17 @@ func (cr *contentReconstructor) Reconstruct(blocks []Block, w io.Writer) uint64 
 		case ContentBlock:
 			n, _ := w.Write(block.Content())
 			offset += uint64(n)
+
 		case HashedBlock:
-			contentBlock, ok := cr.strongHashCache.Get(block.HashSum())
+			hashedBlock, ok := cr.strongHashCache.Get(block.HashSum())
 			if !ok {
 				panic("could not find hashed block in the cache")
 			}
-			n, _ := w.Write(contentBlock.(ContentBlock).Content())
+			contentBlock := hashedBlock.(ContentBlock)
+			if contentBlock.Size() != uint64(len(contentBlock.Content())) {
+				panic("content block size does not match actual content length")
+			}
+			n, _ := w.Write(contentBlock.Content())
 			offset += uint64(n)
 		}
 	}

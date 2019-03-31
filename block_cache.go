@@ -22,3 +22,15 @@ func (bc *blockCache) Get(hash []byte) (Block, bool) {
 func (bc *blockCache) Set(hash []byte, block Block) {
 	(*bc)[string(hash)] = block
 }
+
+func (bc *blockCache) AddHashes(blocks []Block) {
+	for _, block := range blocks {
+		bc.Set(block.(HashedBlock).HashSum(), block)
+	}
+}
+
+func (bc *blockCache) AddContents(hashedBlocks []Block, contentBlocks []Block) {
+	for i, hashedBlock := range hashedBlocks {
+		bc.Set(hashedBlock.(HashedBlock).HashSum(), contentBlocks[i])
+	}
+}

@@ -34,3 +34,34 @@ func TestBlockCache_GetAndSet(t *testing.T) {
 	assert.False(t, ok)
 	assert.Equal(t, third, nil)
 }
+
+func TestBlockCache_AddHashes(t *testing.T) {
+	cache := NewBlockCache()
+
+	cacheBlock1, ok := cache.Get([]byte("hash"))
+	assert.Equal(t, cacheBlock1, nil)
+	assert.False(t, ok)
+
+	hashedBlock := NewHashedBlock(0, 4, []byte("hash"))
+	cache.AddHashes([]Block{hashedBlock})
+	cacheBlock2, ok := cache.Get([]byte("hash"))
+	assert.Equal(t, 1, cache.Len())
+	assert.Equal(t, cacheBlock2, hashedBlock)
+	assert.True(t, ok)
+}
+
+func TestBlockCache_AddContents(t *testing.T) {
+	cache := NewBlockCache()
+
+	cacheBlock1, ok := cache.Get([]byte("hash"))
+	assert.Equal(t, cacheBlock1, nil)
+	assert.False(t, ok)
+
+	hashedBlock := NewHashedBlock(0, 7, []byte("hash"))
+	contentBlock := NewContentBlock(0, 7, []byte("content"))
+	cache.AddContents([]Block{hashedBlock}, []Block{contentBlock})
+	cacheBlock2, ok := cache.Get([]byte("hash"))
+	assert.Equal(t, 1, cache.Len())
+	assert.Equal(t, cacheBlock2, contentBlock)
+	assert.True(t, ok)
+}
