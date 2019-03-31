@@ -5,6 +5,27 @@ import (
 	"testing"
 )
 
+func TestMackerras_Trivial(t *testing.T) {
+	data := []byte("0123")
+	blockSize := 2
+	fixed := NewMackerras(blockSize)
+	_, _ = fixed.Write(data[2:4])
+	assert.Equal(t, fixed.BlockSize(), blockSize)
+	assert.Equal(t, fixed.Size(), 4)
+}
+
+func TestMackerras_Reset(t *testing.T) {
+	data := []byte("0123")
+	blockSize := 2
+	fixed := NewMackerras(blockSize)
+	_, _ = fixed.Write(data[2:4])
+	checksum := fixed.Sum32()
+
+	fixed.Reset()
+	_, _ = fixed.Write(data[2:4])
+	assert.Equal(t, checksum, fixed.Sum32())
+}
+
 func TestMackerras_RollMatchesInTheMiddle(t *testing.T) {
 	data := []byte("0123")
 	blockSize := 2
@@ -17,6 +38,7 @@ func TestMackerras_RollMatchesInTheMiddle(t *testing.T) {
 	_, _ = rolling.Write(data[2:3])
 	_, _ = rolling.Write(data[3:4])
 	assert.Equal(t, fixed.Sum32(), rolling.Sum32())
+	assert.Equal(t, fixed.Sum(nil), rolling.Sum(nil))
 }
 
 func TestMackerras_RollMatchesOverlapping(t *testing.T) {
@@ -31,6 +53,7 @@ func TestMackerras_RollMatchesOverlapping(t *testing.T) {
 	_, _ = rolling.Write(data[3:4])
 	_, _ = rolling.Write(data[4:5])
 	assert.Equal(t, fixed.Sum32(), rolling.Sum32())
+	assert.Equal(t, fixed.Sum(nil), rolling.Sum(nil))
 }
 
 func TestMackerras_RollMatchesUpdateBothMultipleCalls(t *testing.T) {
@@ -46,6 +69,7 @@ func TestMackerras_RollMatchesUpdateBothMultipleCalls(t *testing.T) {
 	_, _ = rolling2.Write(data[3:4])
 	_, _ = rolling2.Write(data[4:5])
 	assert.Equal(t, rolling1.Sum32(), rolling2.Sum32())
+	assert.Equal(t, rolling1.Sum(nil), rolling2.Sum(nil))
 }
 
 func TestMackerras_RollMatchesUpdateBothOneCall(t *testing.T) {
@@ -59,4 +83,5 @@ func TestMackerras_RollMatchesUpdateBothOneCall(t *testing.T) {
 	_, _ = rolling1.Write(data[4:5])
 	_, _ = rolling2.Write(data[2:5])
 	assert.Equal(t, rolling1.Sum32(), rolling2.Sum32())
+	assert.Equal(t, rolling1.Sum(nil), rolling2.Sum(nil))
 }

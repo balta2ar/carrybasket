@@ -197,6 +197,9 @@ func (ts *blockProducerTestStand) reset(blockSize int) {
 	ts.strongHash = md5.New()
 	ts.fastCache = NewBlockCache()
 	ts.strongCache = NewBlockCache()
+
+	ts.inputBlocks = make([]Block, 0)
+	ts.offset = 0
 }
 
 func (ts *blockProducerTestStand) resetHashes() {
@@ -235,19 +238,15 @@ func (ts *blockProducerTestStand) verify(t *testing.T, blocks []Block) {
 		switch inputBlock := block.(type) {
 		case HashedBlock:
 			actualBlock := blocks[i].(HashedBlock)
-			fmt.Printf("hashed block %v\n", actualBlock)
 			assert.Equal(t, inputBlock.HashSum(), actualBlock.HashSum())
 		case ContentBlock:
 			actualBlock := blocks[i].(ContentBlock)
-			fmt.Printf("content block %v\n", actualBlock)
 			assert.Equal(t, inputBlock.Content(), actualBlock.Content())
 		}
 	}
 }
 
 func TestBlockProducer_MultipleTestCases(t *testing.T) {
-	//blockSize := 4
-
 	stand := blockProducerTestStand{
 		nil, nil, nil, nil,
 
@@ -261,10 +260,19 @@ func TestBlockProducer_MultipleTestCases(t *testing.T) {
 		chunks    []chunk
 	}{
 		{
-			4, "abcd123",
+			4, "",
+			[]chunk{},
+		},
+		{
+			4, "1234",
 			[]chunk{
-				{stand.addHash, "abcd"},
-				{stand.addContent, "123"},
+				{stand.addContent, "1234"},
+			},
+		},
+		{
+			4, "1234",
+			[]chunk{
+				{stand.addHash, "1234"},
 			},
 		},
 		{
@@ -272,6 +280,45 @@ func TestBlockProducer_MultipleTestCases(t *testing.T) {
 			[]chunk{
 				{stand.addContent, "123"},
 				{stand.addHash, "abcd"},
+			},
+		},
+		{
+			4, "abcd123",
+			[]chunk{
+				{stand.addHash, "abcd"},
+				{stand.addContent, "123"},
+			},
+		},
+		{
+			4, "123abcd987",
+			[]chunk{
+				{stand.addContent, "123"},
+				{stand.addHash, "abcd"},
+				{stand.addContent, "987"},
+			},
+		},
+		{
+			4, "1234abcd987",
+			[]chunk{
+				{stand.addHash, "1234"},
+				{stand.addHash, "abcd"},
+				{stand.addHash, "987"},
+			},
+		},
+		{
+			4, "1234*abcd",
+			[]chunk{
+				{stand.addHash, "1234"},
+				{stand.addContent, "*"},
+				{stand.addHash, "abcd"},
+			},
+		},
+		{
+			4, "1234****abcd",
+			[]chunk{
+				{stand.addContent, "1234"},
+				{stand.addHash, "****"},
+				{stand.addContent, "abcd"},
 			},
 		},
 	}
@@ -291,10 +338,9 @@ func TestBlockProducer_MultipleTestCases(t *testing.T) {
 		for _, chunk := range tt.chunks {
 			chunk.fn(chunk.value)
 		}
-
 		stand.resetHashes()
 
-		r := NewStackedReadSeeker(strings.NewReader("abcd123"))
+		r := NewStackedReadSeeker(strings.NewReader(tt.input))
 		blocks := producer.Scan(r)
 		stand.verify(t, blocks)
 	}
