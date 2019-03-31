@@ -13,13 +13,13 @@ type HashGenerator interface {
 }
 
 type hashGenerator struct {
-	blockSize int
+	blockSize    int
 	strongHasher hash.Hash
 }
 
 func NewHashGenerator(blockSize int, strongHasher hash.Hash) *hashGenerator {
 	return &hashGenerator{
-		blockSize: blockSize,
+		blockSize:    blockSize,
 		strongHasher: strongHasher,
 	}
 }
