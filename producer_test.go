@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"hash"
-	"hash/adler32"
 	"strings"
 	"testing"
 )
@@ -20,7 +19,7 @@ func makeEmptyBlockProducer(blockSize int) BlockProducer {
 
 func TestBlockProducer_Smoke(t *testing.T) {
 	blockSize := 1
-	fastHash := adler32.New()
+	fastHash := NewMackerras(blockSize)
 	strongHash := md5.New()
 	fastCache := NewBlockCache()
 	strongCache := NewBlockCache()
@@ -344,4 +343,50 @@ func TestBlockProducer_MultipleTestCases(t *testing.T) {
 		blocks := producer.Scan(r)
 		stand.verify(t, blocks)
 	}
+}
+
+func TestProducerFactory_Smoke(t *testing.T) {
+	blockSize := 4
+	factory := NewProducerFactory(blockSize)
+	producer := factory.MakeProducer(nil, nil)
+	assert.NotNil(t, producer)
+}
+
+func TestProducerFactory_WithoutCaches(t *testing.T) {
+	blockSize := 4
+	factory := NewProducerFactory(blockSize)
+	producer := factory.MakeProducer(nil, nil)
+	assert.NotNil(t, producer)
+
+	r := NewStackedReadSeeker(strings.NewReader("abcd"))
+	blocks := producer.Scan(r)
+	// the factory was not given blocks so the caches were empty,
+	// thus it produced content block
+	assert.Len(t, blocks, 1)
+	assert.Equal(t, []byte("abcd"), blocks[0].(ContentBlock).Content())
+}
+
+func TestProducerFactory_WithCaches(t *testing.T) {
+	blockSize := 4
+
+	fastHash := NewMackerras(blockSize)
+	_, _ = fastHash.Write([]byte("abcd"))
+	fastChecksum := fastHash.Sum(nil)
+
+	strongHash := md5.New()
+	strongHash.Write([]byte("abcd"))
+	strongChecksum := strongHash.Sum(nil)
+
+	factory := NewProducerFactory(blockSize)
+	producer := factory.MakeProducer(
+		[]Block{NewHashedBlock(0, 4, fastChecksum)},
+		[]Block{NewHashedBlock(0, 4, strongChecksum)},
+	)
+	assert.NotNil(t, producer)
+
+	r := NewStackedReadSeeker(strings.NewReader("abcd"))
+	blocks := producer.Scan(r)
+	// caches were pre-filled, so producer made a hash block
+	assert.Len(t, blocks, 1)
+	assert.Equal(t, strongChecksum, blocks[0].(HashedBlock).HashSum())
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/md5"
 	"hash"
 	"io"
 )
@@ -215,4 +216,38 @@ func (bp *blockProducer) advance(r StackedReadSeeker, n int) (error) {
 	bp.content = append(bp.content, buffer...)
 
 	return nil
+}
+
+/// Some parts of the system need to have producer at hand, but
+/// they don't need to know the block size. This abstraction hides
+/// the details about the block size.
+type ProducerFactory interface {
+	MakeProducer(fastHashBlocks []Block, strongHashBlocks []Block) BlockProducer
+}
+
+type producerFactory struct {
+	blockSize int
+}
+
+func NewProducerFactory(blockSize int) *producerFactory {
+	return &producerFactory{
+		blockSize: blockSize,
+	}
+}
+
+func (pf *producerFactory) MakeProducer(fastHashBlocks []Block, strongHashBlocks []Block) BlockProducer {
+	fastHash := NewMackerras(pf.blockSize)
+	strongHash := md5.New()
+	fastCache := NewBlockCache()
+	strongCache := NewBlockCache()
+
+	if fastHashBlocks != nil {
+		fastCache.AddHashes(fastHashBlocks)
+	}
+
+	if strongHashBlocks != nil {
+		strongCache.AddHashes(strongHashBlocks)
+	}
+
+	return NewBlockProducer(pf.blockSize, fastHash, strongHash, fastCache, strongCache)
 }
