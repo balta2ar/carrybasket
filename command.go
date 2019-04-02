@@ -98,7 +98,7 @@ func (fc *filesComparator) Compare(
 type AdjustmentCommandApplier interface {
 	Apply(
 		commands []AdjustmentCommand,
-		fs []VirtualFilesystem,
+		fs VirtualFilesystem,
 		cr ContentReconstructor,
 	) error
 }
@@ -111,8 +111,29 @@ func NewAdjustmentCommandApplier() *adjustmentCommandApplier {
 
 func (aca *adjustmentCommandApplier) Apply(
 	commands []AdjustmentCommand,
-	fs []VirtualFilesystem,
+	fs VirtualFilesystem,
 	cr ContentReconstructor,
 ) error {
+	for _, abstractCommand := range commands {
+		switch command := abstractCommand.(type) {
+		case AdjustmentCommandRemoveFile:
+			if err := fs.Delete(command.filename); err != nil {
+				return err
+			}
+
+		case AdjustmentCommandApplyBlocksToFile:
+			tempFilename := command.filename + ".tmp"
+			w, err := fs.Open(tempFilename)
+			if err != nil {
+				return err
+			}
+
+			cr.Reconstruct(command.blocks, w)
+			if err := fs.Move(tempFilename, command.filename); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
