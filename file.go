@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/pkg/errors"
 	"io"
 	"os"
 )
@@ -36,26 +38,56 @@ type VirtualFilesystem interface {
 }
 
 type loggingFilesystem struct {
-	Actions []string
+	Actions []string                 /// actions recorded after calls to the filesystem
+	storage map[string]*bytes.Buffer /// internal storage for filenames and data
 }
 
 func NewLoggingFilesystem() *loggingFilesystem {
-	return &loggingFilesystem{}
+	return &loggingFilesystem{
+		Actions: make([]string, 0),
+		storage: make(map[string]*bytes.Buffer),
+	}
 }
 
 func (lf *loggingFilesystem) Move(sourceFilename string, destFilename string) error {
 	lf.Actions = append(lf.Actions, fmt.Sprintf("move %v %v", sourceFilename, destFilename))
+	if _, ok := lf.storage[sourceFilename]; !ok {
+		return errors.New("source file does not exit")
+	}
+	if _, ok := lf.storage[destFilename]; ok {
+		return errors.New("destination file exists")
+	}
+	lf.storage[destFilename] = lf.storage[sourceFilename]
+	delete(lf.storage, sourceFilename)
 	return nil
 }
 
 func (lf *loggingFilesystem) Delete(filename string) error {
 	lf.Actions = append(lf.Actions, fmt.Sprintf("delete %v", filename))
-	return nil
+	if _, ok := lf.storage[filename]; ok {
+		delete(lf.storage, filename)
+		return nil
+	}
+	return errors.New("file does not exist")
 }
 
 func (lf *loggingFilesystem) Open(filename string) (io.ReadWriter, error) {
 	lf.Actions = append(lf.Actions, fmt.Sprintf("open %v", filename))
-	return nil, nil
+	rw, ok := lf.storage[filename]
+	if ok {
+		// Multiple concurrent readers and writers are not supported
+		// in this virtual filesystem.
+		// This is a terrible thing to do, but it's fine since this
+		// concrete implementation is only supposed to be used in
+		// tests.
+		buffer := bytes.NewBuffer(rw.Bytes())
+		lf.storage[filename] = buffer
+		return rw, nil
+	}
+
+	buffer := bytes.NewBuffer(nil)
+	lf.storage[filename] = buffer
+	return buffer, nil
 }
 
 type actualFilesystem struct{}
