@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/md5"
 	"hash"
 	"io"
 )
@@ -77,3 +78,25 @@ func (hg *hashGenerator) Scan(r io.Reader) HashGeneratorResult {
 }
 
 func (hg *hashGenerator) Reset() {}
+
+/// File lister will need instances of hash generator, but we should
+/// hide from it such details as block size or actual hashes that are
+/// used to hash data.
+type HashGeneratorFactory interface {
+	MakeHashGenerator() HashGenerator
+}
+
+type hashGeneratorFactory struct {
+	blockSize int
+}
+
+func NewHashGeneratorFactory() *hashGeneratorFactory {
+	return &hashGeneratorFactory{
+	}
+}
+
+func (hgf *hashGeneratorFactory) MakeHashGenerator() HashGenerator {
+	fastHash := NewMackerras(hgf.blockSize)
+	strongHash := md5.New()
+	return NewHashGenerator(hgf.blockSize, fastHash, strongHash)
+}
