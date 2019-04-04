@@ -11,6 +11,10 @@ type AdjustmentCommandApplyBlocksToFile struct {
 	blocks   []Block
 }
 
+type AdjustmentCommandMkDir struct {
+	filename string
+}
+
 /// Files can be compared and based on the comparison results various
 /// actions are possible, e.g. remove file from server or apply
 /// client blocks to server files.
@@ -49,6 +53,7 @@ func (fc *filesComparator) Compare(
 	var i, j int
 
 	addClientFile := func(i int, fastHashBlocks []Block, strongHashBlocks []Block) {
+		// both are files
 		producer := fc.producerFactory.MakeProducer(fastHashBlocks, strongHashBlocks)
 		blocks := producer.Scan(NewStackedReadSeeker(clientFiles[i].Rw))
 		// if all blocks are hashed, the content is the same, no need to transfer anything
@@ -59,10 +64,58 @@ func (fc *filesComparator) Compare(
 		}
 	}
 
+	addClientFileOrDir := func(i int, fastHashBlocks []Block, strongHashBlocks []Block) {
+		// called only when the server counterpart is missing
+		if clientFiles[i].IsDir {
+			commands = append(commands,
+				AdjustmentCommandMkDir{clientFiles[i].Filename},
+			)
+			return
+
+		}
+
+		// both are files
+		addClientFile(i, fastHashBlocks, strongHashBlocks)
+	}
+
+	compareAndAddClientFileOrDir := func(i int, j int, fastHashBlocks []Block, strongHashBlocks []Block) {
+		// called when filenames are the same but isDir flag may be different
+		clientDir, serverDir := clientFiles[i].IsDir, serverHashedFiles[j].IsDir
+		// both are dirs, nothing's changed
+		if clientDir && serverDir {
+			return
+		}
+
+		// client file, server dir
+		if !clientDir && serverDir {
+			// remove server dir, replace it with new client file
+			commands = append(commands,
+				AdjustmentCommandRemoveFile{serverHashedFiles[j].Filename},
+			)
+			addClientFile(i, nil, nil)
+			return
+		}
+
+		// client dir, server file
+		if clientDir && !serverDir {
+			// remove server file, create client dir
+			commands = append(commands,
+				AdjustmentCommandRemoveFile{serverHashedFiles[j].Filename},
+			)
+			commands = append(commands,
+				AdjustmentCommandMkDir{clientFiles[i].Filename},
+			)
+			return
+		}
+
+		// both are files
+		addClientFile(i, fastHashBlocks, strongHashBlocks)
+	}
+
 	for i < len(clientFiles) && j < len(serverHashedFiles) {
 		if clientFiles[i].Filename < serverHashedFiles[j].Filename {
 			// new client file, add it
-			addClientFile(i, nil, nil)
+			addClientFileOrDir(i, nil, nil)
 			i += 1
 		} else if clientFiles[i].Filename > serverHashedFiles[j].Filename {
 			// new server file, remove it
@@ -72,7 +125,7 @@ func (fc *filesComparator) Compare(
 			j += 1
 		} else {
 			// file name is the same, compare contents
-			addClientFile(i, serverHashedFiles[j].FastHashes, serverHashedFiles[j].StrongHashes)
+			compareAndAddClientFileOrDir(i, j, serverHashedFiles[j].FastHashes, serverHashedFiles[j].StrongHashes)
 			i += 1
 			j += 1
 		}
@@ -80,7 +133,7 @@ func (fc *filesComparator) Compare(
 
 	// add new files if any
 	for i < len(clientFiles) {
-		addClientFile(i, nil, nil)
+		addClientFileOrDir(i, nil, nil)
 		i += 1
 	}
 
@@ -118,6 +171,11 @@ func (aca *adjustmentCommandApplier) Apply(
 		switch command := abstractCommand.(type) {
 		case AdjustmentCommandRemoveFile:
 			if err := fs.Delete(command.filename); err != nil {
+				return err
+			}
+
+		case AdjustmentCommandMkDir:
+			if err := fs.Mkdir(command.filename); err != nil {
 				return err
 			}
 
