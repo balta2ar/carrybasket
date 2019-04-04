@@ -12,7 +12,7 @@ import (
 /// blocks and should be sent to the server to apply changes using
 /// ContentReconstructor.
 type BlockProducer interface {
-	Scan(r StackedReadSeeker) []Block
+	Scan(r io.Reader) []Block
 	Reset()
 }
 
@@ -58,26 +58,6 @@ func (bp *blockProducer) Reset() {
 	bp.content = make([]byte, 0)
 }
 
-// How many bytes in the input is left
-func inputBytesRemain(r StackedReadSeeker) int {
-	r.Push()
-	defer r.Pop()
-
-	current, _ := r.Seek(0, io.SeekCurrent)
-	size, _ := r.Seek(0, io.SeekEnd)
-	return int(size - current)
-}
-
-// Take the min of what remains and our regular block size. This is
-// used to advance position in the beginning of the scan when there
-// could be less data than our block size.
-func (bp *blockProducer) windowSizeForward() int {
-	if bp.bytesRemain < bp.blockSize {
-		return bp.bytesRemain
-	}
-	return bp.blockSize
-}
-
 // Calculate how far back we can go from the current position. This is
 // used when fast checksum has matched, and we need to rewind backwards
 // to read data to calculate strong checksum. Cutoff barrier is respected.
@@ -109,7 +89,7 @@ func (bp *blockProducer) emitContent(blocks []Block, offset int, content []byte)
 	return blocks
 }
 
-func (bp *blockProducer) tryEmitHash(blocks []Block, r StackedReadSeeker) ([]Block, bool) {
+func (bp *blockProducer) tryEmitHash(blocks []Block, r io.Reader) ([]Block, bool) {
 	if cachedBlock, ok := bp.findFastAndStrongHash(r); ok {
 		// Fast & strong hashes have been found.
 		// But before we proceed, there could be content before this
@@ -145,25 +125,14 @@ func (bp *blockProducer) emitHash(blocks []Block, hashedBlock HashedBlock) []Blo
 // match and we check whether strong hash matches as well. Normally strong
 // hash is calculated over blockSize bytes, but it may be smaller in the
 // beginning and in the end of the input.
-func (bp *blockProducer) readCurrentWindow(r StackedReadSeeker) []byte {
-	r.Push()
-	defer r.Pop()
-
+func (bp *blockProducer) readCurrentWindow(r io.Reader) []byte {
 	bytesToRewind := bp.windowSizeBackward()
-	if _, err := r.Seek(int64(-bytesToRewind), io.SeekCurrent); err != nil {
-		panic("unexpected seek error")
-	}
-
-	buffer := make([]byte, bytesToRewind)
-	if _, err := r.Read(buffer); err != nil {
-		panic("unexpected read error")
-	}
-	return buffer
+	return bp.content[len(bp.content)-bytesToRewind:]
 }
 
 // Check whether fast & strong hashes of the current window
 // are available in caches
-func (bp *blockProducer) findFastAndStrongHash(r StackedReadSeeker) (Block, bool) {
+func (bp *blockProducer) findFastAndStrongHash(r io.Reader) (Block, bool) {
 	// first, check fast hash
 	if _, ok := bp.fastHashCache.Get(bp.fastHasher.Sum(nil)); !ok {
 		return nil, false
@@ -181,16 +150,8 @@ func (bp *blockProducer) findFastAndStrongHash(r StackedReadSeeker) (Block, bool
 /// Blocks with content will be written by the server into the file.
 /// Blocks with hashes indicate that server already has this block on
 /// its side so it can reuse it.
-func (bp *blockProducer) Scan(r StackedReadSeeker) []Block {
+func (bp *blockProducer) Scan(r io.Reader) []Block {
 	blocks := make([]Block, 0)
-	bp.bytesRemain = inputBytesRemain(r)
-
-	// the first step is to read the window of size equals to the block size
-	err := bp.advance(r, bp.windowSizeForward())
-	if err != nil {
-		return blocks
-	}
-
 	for {
 		blocks, _ = bp.tryEmitHash(blocks, r)
 		if err := bp.advance(r, 1); err != nil {
@@ -204,7 +165,7 @@ func (bp *blockProducer) Scan(r StackedReadSeeker) []Block {
 }
 
 // Try reading n bytes from reader r
-func (bp *blockProducer) advance(r StackedReadSeeker, n int) (error) {
+func (bp *blockProducer) advance(r io.Reader, n int) (error) {
 	buffer := make([]byte, n)
 	n, err := r.Read(buffer)
 	if err != nil {

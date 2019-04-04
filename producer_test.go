@@ -25,11 +25,11 @@ func TestBlockProducer_Smoke(t *testing.T) {
 	strongCache := NewBlockCache()
 	producer := NewBlockProducer(blockSize, fastHash, strongHash, fastCache, strongCache)
 
-	r1 := NewStackedReadSeeker(strings.NewReader("abc"))
+	r1 := strings.NewReader("abc")
 	result := producer.Scan(r1)
 	assert.NotEmpty(t, result)
 
-	r2 := NewStackedReadSeeker(strings.NewReader(""))
+	r2 := strings.NewReader("")
 	producer.Reset()
 	result = producer.Scan(r2)
 	assert.Empty(t, result)
@@ -37,7 +37,7 @@ func TestBlockProducer_Smoke(t *testing.T) {
 
 func TestBlockProducer_EmitOneByteOfContent(t *testing.T) {
 	producer := makeEmptyBlockProducer(1)
-	r := NewStackedReadSeeker(strings.NewReader("a"))
+	r := strings.NewReader("a")
 	result := producer.Scan(r)
 	assert.Len(t, result, 1)
 	block := result[0].(ContentBlock)
@@ -46,7 +46,7 @@ func TestBlockProducer_EmitOneByteOfContent(t *testing.T) {
 
 func TestBlockProducer_EmitSeveralBytesOfContentBlockOfOneByte(t *testing.T) {
 	producer := makeEmptyBlockProducer(1)
-	r := NewStackedReadSeeker(strings.NewReader("abc"))
+	r := strings.NewReader("abc")
 	result := producer.Scan(r)
 	assert.Len(t, result, 1)
 	block := result[0].(ContentBlock)
@@ -56,7 +56,7 @@ func TestBlockProducer_EmitSeveralBytesOfContentBlockOfOneByte(t *testing.T) {
 
 func TestBlockProducer_EmitSeveralBytesOfContentBlockOfFourBytes(t *testing.T) {
 	producer := makeEmptyBlockProducer(4)
-	r := NewStackedReadSeeker(strings.NewReader("abcdefgh"))
+	r := strings.NewReader("abcdefgh")
 	result := producer.Scan(r)
 	assert.Len(t, result, 1)
 	block := result[0].(ContentBlock)
@@ -86,7 +86,7 @@ func TestBlockProducer_EmitOneHashed(t *testing.T) {
 	strongHash.Reset()
 
 	// scan
-	r := NewStackedReadSeeker(strings.NewReader("abcd"))
+	r := strings.NewReader("abcd")
 	result := producer.Scan(r)
 	assert.Len(t, result, 1)
 	block := result[0].(HashedBlock)
@@ -122,7 +122,7 @@ func TestBlockProducer_EmitTwoHashedSameSize(t *testing.T) {
 	strongHash.Reset()
 
 	// scan
-	r := NewStackedReadSeeker(strings.NewReader("abcd1234"))
+	r := strings.NewReader("abcd1234")
 	result := producer.Scan(r)
 	assert.Len(t, result, 2)
 	block1 := result[0].(HashedBlock)
@@ -163,7 +163,7 @@ func TestBlockProducer_EmitTwoHashedSecondIsSmaller(t *testing.T) {
 	strongHash.Reset()
 
 	// scan
-	r := NewStackedReadSeeker(strings.NewReader("abcd123"))
+	r := strings.NewReader("abcd123")
 	result := producer.Scan(r)
 	assert.Len(t, result, 2)
 	block1 := result[0].(HashedBlock)
@@ -339,7 +339,7 @@ func TestBlockProducer_MultipleTestCases(t *testing.T) {
 		}
 		stand.resetHashes()
 
-		r := NewStackedReadSeeker(strings.NewReader(tt.input))
+		r := strings.NewReader(tt.input)
 		blocks := producer.Scan(r)
 		stand.verify(t, blocks)
 	}
@@ -358,7 +358,7 @@ func TestProducerFactory_WithoutCaches(t *testing.T) {
 	producer := factory.MakeProducer(nil, nil)
 	assert.NotNil(t, producer)
 
-	r := NewStackedReadSeeker(strings.NewReader("abcd"))
+	r := strings.NewReader("abcd")
 	blocks := producer.Scan(r)
 	// the factory was not given blocks so the caches were empty,
 	// thus it produced content block
@@ -384,7 +384,7 @@ func TestProducerFactory_WithCaches(t *testing.T) {
 	)
 	assert.NotNil(t, producer)
 
-	r := NewStackedReadSeeker(strings.NewReader("abcd"))
+	r := strings.NewReader("abcd")
 	blocks := producer.Scan(r)
 	// caches were pre-filled, so producer made a hash block
 	assert.Len(t, blocks, 1)

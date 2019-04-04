@@ -28,7 +28,7 @@ func assertGenerateProduceReconstruct(
 	fastHasher.Reset()
 	strongHasher.Reset()
 	producer := NewBlockProducer(blockSize, fastHasher, strongHasher, fastCache, strongCache)
-	r := NewStackedReadSeeker(strings.NewReader(clientContent))
+	r := strings.NewReader(clientContent)
 	producerResult := producer.Scan(r)
 
 	contentCache := NewBlockCache()
@@ -59,7 +59,7 @@ func TestIntegration_Smoke(t *testing.T) {
 	fastHasher.Reset()
 	strongHasher.Reset()
 	producer := NewBlockProducer(blockSize, fastHasher, strongHasher, fastCache, strongCache)
-	r := NewStackedReadSeeker(strings.NewReader(clientContent))
+	r := strings.NewReader(clientContent)
 	producerResult := producer.Scan(r)
 	assert.Empty(t, producerResult)
 

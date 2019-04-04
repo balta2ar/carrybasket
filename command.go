@@ -55,7 +55,7 @@ func (fc *filesComparator) Compare(
 	addClientFile := func(i int, fastHashBlocks []Block, strongHashBlocks []Block) {
 		// both are files
 		producer := fc.producerFactory.MakeProducer(fastHashBlocks, strongHashBlocks)
-		blocks := producer.Scan(NewStackedReadSeeker(clientFiles[i].Rw))
+		blocks := producer.Scan(clientFiles[i].Rw)
 		// if all blocks are hashed, the content is the same, no need to transfer anything
 		if anyContentBlocks(blocks) {
 			commands = append(commands,
