@@ -36,6 +36,10 @@ func TestLoggingFilesystem_Everything(t *testing.T) {
 	assert.Error(t, fs.Delete("b"))
 	assert.Error(t, fs.Delete("a"))
 
+	filenames, err := fs.ListAll()
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"x"}, filenames)
+
 	assert.Equal(t, []string{
 		"open d",
 		"open x",
@@ -46,6 +50,7 @@ func TestLoggingFilesystem_Everything(t *testing.T) {
 		"delete b",
 		"delete b",
 		"delete a",
+		"listall",
 	}, fs.Actions)
 }
 
@@ -74,4 +79,58 @@ func TestLoggingFilesystem_OpenWriteOpenReadOpenRead(t *testing.T) {
 	result, err = ioutil.ReadAll(handle)
 	assert.Nil(t, err)
 	assert.Equal(t, "abc", string(result))
+
+	filenames, err := fs.ListAll()
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"a"}, filenames)
+}
+
+func TestLoggingFilesystem_IsPath(t *testing.T) {
+	fs := NewLoggingFilesystem()
+
+	assert.False(t, fs.IsPath("a"))
+
+	handle, err := fs.Open("a")
+	assert.NotNil(t, handle)
+	assert.Nil(t, err)
+
+	assert.True(t, fs.IsPath("a"))
+
+	assert.Equal(t, []string{
+		"ispath a",
+		"open a",
+		"ispath a",
+	}, fs.Actions)
+}
+
+func TestLoggingFilesystem_IsDirMkDir(t *testing.T) {
+	fs := NewLoggingFilesystem()
+
+	assert.False(t, fs.IsDir("a"))
+
+	handle, err := fs.Open("a")
+	assert.NotNil(t, handle)
+	assert.Nil(t, err)
+
+	assert.False(t, fs.IsDir("a"))
+	assert.Error(t, fs.Mkdir("a"))
+	assert.Nil(t, fs.Mkdir("b"))
+
+	handle, err = fs.Open("b")
+	assert.Nil(t, nil)
+	assert.Error(t, err)
+
+	filenames, err := fs.ListAll()
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"a", "b"}, filenames)
+
+	assert.Equal(t, []string{
+		"isdir a",
+		"open a",
+		"isdir a",
+		"mkdir a",
+		"mkdir b",
+		"open b",
+		"listall",
+	}, fs.Actions)
 }
