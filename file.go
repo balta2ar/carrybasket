@@ -22,16 +22,7 @@ type VirtualFile struct {
 	Filename string
 	IsDir    bool
 	Rw       io.ReadSeeker
-	// TODO: think how you will handle server writes
-	//Rw       io.ReadWriteSeeker
 }
-
-type OpenMode int
-
-const (
-	OpenModeRead OpenMode = iota
-	OpenModeWrite
-)
 
 type VirtualFilesystem interface {
 	Move(sourceFilename string, destFilename string) error
@@ -110,7 +101,6 @@ func (lf *loggingFilesystem) IsDir(filename string) bool {
 	lf.Actions = append(lf.Actions, fmt.Sprintf("isdir %v", filename))
 	rw, ok := lf.storage[filename]
 	return (rw == nil) && ok
-	//return ok && strings.HasSuffix(filename, "/")
 }
 
 func (lf *loggingFilesystem) Mkdir(filename string) error {
@@ -208,7 +198,7 @@ func ListClientFiles(fs VirtualFilesystem) ([]VirtualFile, error) {
 			clientFiles = append(clientFiles, VirtualFile{
 				Filename: filename,
 				IsDir:    false,
-				Rw:       nil, //rw,
+				Rw:       nil,
 			})
 		}
 	}

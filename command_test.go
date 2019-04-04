@@ -313,7 +313,7 @@ func TestAdjustmentCommandApplier_RmOneDir(t *testing.T) {
 	reconstructor := NewContentReconstructor(contentCache)
 
 	fs := NewLoggingFilesystem()
-	fs.Mkdir("b")
+	assert.Nil(t, fs.Mkdir("b"))
 	applier := NewAdjustmentCommandApplier()
 	err := applier.Apply(commands, fs, reconstructor)
 	assert.Nil(t, err)

@@ -134,3 +134,10 @@ func TestLoggingFilesystem_IsDirMkDir(t *testing.T) {
 		"listall",
 	}, fs.Actions)
 }
+
+func TestListClientFiles_Smoke(t *testing.T) {
+	fs := NewLoggingFilesystem()
+	files, err := ListClientFiles(fs)
+	assert.Empty(t, files)
+	assert.Nil(t, err)
+}
