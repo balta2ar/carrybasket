@@ -4,6 +4,9 @@ package main
 type BlockCache interface {
 	Get(hash []byte) (block Block, ok bool)
 	Set(hash []byte, block Block)
+
+	AddHashes(blocks []Block)
+	AddContents(hashedBlocks []Block, contentBlocks []Block)
 }
 
 type blockCache map[string]Block

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/md5"
 	"hash"
 	"io"
 )
@@ -186,19 +185,30 @@ type ProducerFactory interface {
 	MakeProducer(fastHashBlocks []Block, strongHashBlocks []Block) BlockProducer
 }
 
+type MakeFastHash func() hash.Hash32
+type MakeStrongHash func() hash.Hash
+
 type producerFactory struct {
-	blockSize int
+	blockSize      int
+	makeFastHash   MakeFastHash
+	makeStrongHash MakeStrongHash
 }
 
-func NewProducerFactory(blockSize int) *producerFactory {
+func NewProducerFactory(
+	blockSize int,
+	makeFastHash MakeFastHash,
+	makeStrongHash MakeStrongHash,
+) *producerFactory {
 	return &producerFactory{
-		blockSize: blockSize,
+		blockSize:      blockSize,
+		makeFastHash:   makeFastHash,
+		makeStrongHash: makeStrongHash,
 	}
 }
 
 func (pf *producerFactory) MakeProducer(fastHashBlocks []Block, strongHashBlocks []Block) BlockProducer {
-	fastHash := NewMackerras(pf.blockSize)
-	strongHash := md5.New()
+	fastHash := pf.makeFastHash()
+	strongHash := pf.makeStrongHash()
 	fastCache := NewBlockCache()
 	strongCache := NewBlockCache()
 

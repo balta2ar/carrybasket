@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/md5"
 	"github.com/stretchr/testify/assert"
+	"hash"
 	"io/ioutil"
 	"strings"
 	"testing"
@@ -13,7 +14,12 @@ func runComparator(
 	clientFiles []VirtualFile,
 	serverHashedFiles []HashedFile,
 ) []AdjustmentCommand {
-	comparator := NewFilesComparator(NewProducerFactory(blockSize))
+	factory := NewProducerFactory(
+		blockSize,
+		func() hash.Hash32 { return NewMackerras(blockSize) },
+		func() hash.Hash { return md5.New() },
+	)
+	comparator := NewFilesComparator(factory)
 	commands := comparator.Compare(clientFiles, serverHashedFiles)
 	return commands
 }
@@ -48,7 +54,12 @@ func makeServerFileAndGetContent(
 func TestFilesComparator_Smoke(t *testing.T) {
 	blockSize := 4
 
-	comparator := NewFilesComparator(NewProducerFactory(blockSize))
+	factory := NewProducerFactory(
+		blockSize,
+		func() hash.Hash32 { return NewMackerras(blockSize) },
+		func() hash.Hash { return md5.New() },
+	)
+	comparator := NewFilesComparator(factory)
 	commands := comparator.Compare(
 		[]VirtualFile{},
 		[]HashedFile{},
