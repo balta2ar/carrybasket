@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/md5"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"testing"
@@ -138,6 +139,81 @@ func TestLoggingFilesystem_IsDirMkDir(t *testing.T) {
 func TestListClientFiles_Smoke(t *testing.T) {
 	fs := NewLoggingFilesystem()
 	files, err := ListClientFiles(fs)
-	assert.Empty(t, files)
 	assert.Nil(t, err)
+	assert.Empty(t, files)
+}
+
+func TestListClientFiles_FilesAndDirs(t *testing.T) {
+	fs := NewLoggingFilesystem()
+	_, _ = fs.Open("a")
+	_ = fs.Mkdir("b")
+	_, _ = fs.Open("b/nested1")
+	_, _ = fs.Open("b/nested2")
+
+	files, err := ListClientFiles(fs)
+	assert.Nil(t, err)
+	assert.Len(t, files, 4)
+
+	assert.Equal(t, "a", files[0].Filename)
+	assert.False(t, files[0].IsDir)
+	assert.NotNil(t, files[0].Rw)
+
+	assert.Equal(t, "b", files[1].Filename)
+	assert.True(t, files[1].IsDir)
+	assert.Nil(t, files[1].Rw)
+
+	assert.Equal(t, "b/nested1", files[2].Filename)
+	assert.False(t, files[2].IsDir)
+	assert.NotNil(t, files[2].Rw)
+
+	assert.Equal(t, "b/nested2", files[3].Filename)
+	assert.False(t, files[3].IsDir)
+	assert.NotNil(t, files[3].Rw)
+}
+
+func TestListServerFiles_Smoke(t *testing.T) {
+	fs := NewLoggingFilesystem()
+	generator := NewHashGenerator(4, nil, nil)
+	files, err := ListServerFiles(fs, generator)
+	assert.Nil(t, err)
+	assert.Empty(t, files)
+}
+
+func TestListServerFiles_FilesAndDirs(t *testing.T) {
+	fs := NewLoggingFilesystem()
+	_ = fs.Mkdir("a")
+	rw, _ := fs.Open("b")
+	_, _ = rw.Write([]byte("abc"))
+	rw, _ = fs.Open("c")
+	_, _ = rw.Write([]byte("abcd"))
+	rw, _ = fs.Open("d")
+	_, _ = rw.Write([]byte("abcdefg"))
+	rw, _ = fs.Open("e")
+	_, _ = rw.Write([]byte("abcdefgh"))
+
+	blockSize := 4
+	fastHasher := NewMackerras(blockSize)
+	strongHasher := md5.New()
+	generator := NewHashGenerator(4, fastHasher, strongHasher)
+	files, err := ListServerFiles(fs, generator)
+	assert.Nil(t, err)
+	assert.Len(t, files, 5)
+
+	expectedCases := []struct{
+		Filename string
+		IsDir bool
+		NumHashes int
+	}{
+		{"a", true, 0},
+		{"b", false, 1},
+		{"c", false, 1},
+		{"d", false, 2},
+		{"e", false, 2},
+	}
+	for i, expected := range expectedCases {
+		assert.Equal(t, expected.Filename, files[i].Filename)
+		assert.Equal(t, expected.IsDir, files[i].IsDir)
+		assert.Len(t, files[i].FastHashes, expected.NumHashes)
+		assert.Len(t, files[i].StrongHashes, expected.NumHashes)
+	}
 }

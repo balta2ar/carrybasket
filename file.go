@@ -21,7 +21,7 @@ type HashedFile struct {
 type VirtualFile struct {
 	Filename string
 	IsDir    bool
-	Rw       io.ReadSeeker
+	Rw       io.Reader
 }
 
 type VirtualFilesystem interface {
@@ -195,10 +195,14 @@ func ListClientFiles(fs VirtualFilesystem) ([]VirtualFile, error) {
 			if err != nil {
 				return nil, errors.Wrap(err, "cannot open file")
 			}
+			r, err := fs.Open(filename)
+			if err != nil {
+				return nil, errors.Wrap(err, "cannot open file")
+			}
 			clientFiles = append(clientFiles, VirtualFile{
 				Filename: filename,
 				IsDir:    false,
-				Rw:       nil,
+				Rw:       r,
 			})
 		}
 	}
@@ -206,6 +210,40 @@ func ListClientFiles(fs VirtualFilesystem) ([]VirtualFile, error) {
 	return clientFiles, nil
 }
 
-func ListServerFiles(fs VirtualFilesystem) ([]HashedFile, error) {
-	return nil, nil
+func ListServerFiles(fs VirtualFilesystem, hg HashGenerator) ([]HashedFile, error) {
+	filenames, err := fs.ListAll()
+	if err != nil {
+		return nil, errors.Wrap(err, "cannot list filesystem")
+	}
+	serverFiles := make([]HashedFile, 0, len(filenames))
+
+	for _, filename := range filenames {
+		if fs.IsDir(filename) {
+			serverFiles = append(serverFiles, HashedFile{
+				Filename:     filename,
+				IsDir:        true,
+				FastHashes:   nil,
+				StrongHashes: nil,
+			})
+		} else {
+			_, err := fs.Open(filename)
+			if err != nil {
+				return nil, errors.Wrap(err, "cannot open file")
+			}
+			r, err := fs.Open(filename)
+			if err != nil {
+				return nil, errors.Wrap(err, "cannot open file")
+			}
+			hg.Reset()
+			generatorResult := hg.Scan(r)
+			serverFiles = append(serverFiles, HashedFile{
+				Filename:     filename,
+				IsDir:        false,
+				FastHashes:   generatorResult.fastHashes,
+				StrongHashes: generatorResult.strongHashes,
+			})
+		}
+	}
+
+	return serverFiles, nil
 }
