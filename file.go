@@ -51,8 +51,9 @@ func (lf *loggingFilesystem) Move(sourceFilename string, destFilename string) er
 	if _, ok := lf.storage[sourceFilename]; !ok {
 		return errors.New("source file does not exit")
 	}
-	if _, ok := lf.storage[destFilename]; ok {
-		return errors.New("destination file exists")
+	rw, ok := lf.storage[destFilename]
+	if (rw == nil) && ok {
+		return errors.New("destination is a directory")
 	}
 	lf.storage[destFilename] = lf.storage[sourceFilename]
 	delete(lf.storage, sourceFilename)
@@ -173,6 +174,7 @@ func (lf *actualFilesystem) ListAll() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	sort.Strings(filenames)
 	return filenames, nil
 }
 
@@ -210,7 +212,11 @@ func ListClientFiles(fs VirtualFilesystem) ([]VirtualFile, error) {
 	return clientFiles, nil
 }
 
-func ListServerFiles(fs VirtualFilesystem, hg HashGenerator) ([]HashedFile, error) {
+func ListServerFiles(
+	fs VirtualFilesystem,
+	generator HashGenerator,
+	contentCache BlockCache,
+) ([]HashedFile, error) {
 	filenames, err := fs.ListAll()
 	if err != nil {
 		return nil, errors.Wrap(err, "cannot list filesystem")
@@ -234,14 +240,18 @@ func ListServerFiles(fs VirtualFilesystem, hg HashGenerator) ([]HashedFile, erro
 			if err != nil {
 				return nil, errors.Wrap(err, "cannot open file")
 			}
-			hg.Reset()
-			generatorResult := hg.Scan(r)
+			generator.Reset()
+			generatorResult := generator.Scan(r)
 			serverFiles = append(serverFiles, HashedFile{
 				Filename:     filename,
 				IsDir:        false,
 				FastHashes:   generatorResult.fastHashes,
 				StrongHashes: generatorResult.strongHashes,
 			})
+			if contentCache != nil {
+				contentCache.AddContents(
+					generatorResult.strongHashes, generatorResult.contentBlocks)
+			}
 		}
 	}
 

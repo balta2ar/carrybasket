@@ -20,12 +20,20 @@ func TestLoggingFilesystem_Everything(t *testing.T) {
 	handle, err = fs.Open("x")
 	assert.NotNil(t, handle)
 	assert.Nil(t, err)
+	_, err = handle.Write([]byte("abc"))
+	assert.Nil(t, err)
 
+	handle, err = fs.Open("y")
+	assert.NotNil(t, handle)
+	assert.Nil(t, err)
 	_, err = handle.Write([]byte("123"))
 	assert.Nil(t, err)
 
+	_ = fs.Mkdir("dir")
+
 	assert.Error(t, fs.Move("a", "b"))
-	assert.Error(t, fs.Move("x", "d"))
+	assert.Error(t, fs.Move("y", "dir"))
+	assert.Nil(t, fs.Move("x", "d"))
 	assert.Nil(t, fs.Move("d", "b"))
 
 	handle, err = fs.Open("b")
@@ -39,12 +47,15 @@ func TestLoggingFilesystem_Everything(t *testing.T) {
 
 	filenames, err := fs.ListAll()
 	assert.Nil(t, err)
-	assert.Equal(t, []string{"x"}, filenames)
+	assert.Equal(t, []string{"dir", "y"}, filenames)
 
 	assert.Equal(t, []string{
 		"open d",
 		"open x",
+		"open y",
+		"mkdir dir",
 		"move a b",
+		"move y dir",
 		"move x d",
 		"move d b",
 		"open b",
@@ -174,7 +185,7 @@ func TestListClientFiles_FilesAndDirs(t *testing.T) {
 func TestListServerFiles_Smoke(t *testing.T) {
 	fs := NewLoggingFilesystem()
 	generator := NewHashGenerator(4, nil, nil)
-	files, err := ListServerFiles(fs, generator)
+	files, err := ListServerFiles(fs, generator, nil)
 	assert.Nil(t, err)
 	assert.Empty(t, files)
 }
@@ -195,7 +206,8 @@ func TestListServerFiles_FilesAndDirs(t *testing.T) {
 	fastHasher := NewMackerras(blockSize)
 	strongHasher := md5.New()
 	generator := NewHashGenerator(4, fastHasher, strongHasher)
-	files, err := ListServerFiles(fs, generator)
+	contentCache := NewBlockCache()
+	files, err := ListServerFiles(fs, generator, contentCache)
 	assert.Nil(t, err)
 	assert.Len(t, files, 5)
 

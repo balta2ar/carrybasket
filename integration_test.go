@@ -5,9 +5,16 @@ import (
 	"crypto/md5"
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"hash"
 	"strings"
 	"testing"
 )
+
+type File struct {
+	Filename string
+	IsDir    bool
+	Content  string
+}
 
 func assertGenerateProduceReconstruct(
 	t *testing.T,
@@ -38,6 +45,21 @@ func assertGenerateProduceReconstruct(
 	reconstructor.Reconstruct(producerResult, serverOutputFile)
 
 	assert.Equal(t, clientContent, serverOutputFile.String())
+}
+
+func makeFilesystem(files []File) VirtualFilesystem {
+	fs := NewLoggingFilesystem()
+
+	for _, file := range files {
+		if file.IsDir {
+			_ = fs.Mkdir(file.Filename)
+		} else {
+			rw, _ := fs.Open(file.Filename)
+			_, _ = rw.Write([]byte(file.Content))
+		}
+	}
+
+	return fs
 }
 
 func TestIntegration_Smoke(t *testing.T) {
@@ -99,4 +121,55 @@ func TestIntegration_ContentEquality(t *testing.T) {
 		assertGenerateProduceReconstruct(
 			t, tt.blockSize, tt.clientContent, tt.serverContent)
 	}
+}
+
+func assertFilesystemsEqual(t *testing.T, leftFs VirtualFilesystem, rightFs VirtualFilesystem) {
+	leftFiles, err := leftFs.ListAll()
+	assert.Nil(t, err)
+	rightFiles, err := rightFs.ListAll()
+	assert.Nil(t, err)
+
+	assert.Equal(t, len(leftFiles), len(rightFiles))
+	assert.Equal(t, leftFiles, rightFiles)
+
+	// TODO: compare each file's content and IsDir flag
+}
+
+func TestIntegration_SyncClientServerOffline(t *testing.T) {
+	blockSize := 4
+	makeFastHash := func() hash.Hash32 { return NewMackerras(blockSize) }
+	makeStrongHash := func() hash.Hash { return md5.New() }
+
+	fastHasher := makeFastHash()
+	strongHasher := makeStrongHash()
+	generator := NewHashGenerator(blockSize, fastHasher, strongHasher)
+
+	clientFiles := []File{
+		{"a", true, ""},
+		{"b", false, "abcd"},
+	}
+	clientFs := makeFilesystem(clientFiles)
+	listedClientFiles, err := ListClientFiles(clientFs)
+	assert.Nil(t, err)
+	assert.Len(t, listedClientFiles, 2)
+
+	serverFiles := []File{
+		{"b", false, "1234"},
+	}
+	serverFs := makeFilesystem(serverFiles)
+	serverContentCache := NewBlockCache()
+	listedServerFiles, err := ListServerFiles(serverFs, generator, serverContentCache)
+	assert.Nil(t, err)
+	assert.Len(t, listedServerFiles, 1)
+
+	factory := NewProducerFactory(blockSize, makeFastHash, makeStrongHash)
+	comparator := NewFilesComparator(factory)
+	commands := comparator.Compare(listedClientFiles, listedServerFiles)
+
+	reconstructor := NewContentReconstructor(serverContentCache)
+	applier := NewAdjustmentCommandApplier()
+	err = applier.Apply(commands, serverFs, reconstructor)
+	assert.Nil(t, err)
+
+	assertFilesystemsEqual(t, clientFs, serverFs)
 }
