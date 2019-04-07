@@ -85,7 +85,6 @@ func assertSyncOffline(t *testing.T, blockSize int, clientFiles []File, serverFi
 	factory := NewProducerFactory(blockSize, makeFastHash, makeStrongHash)
 	comparator := NewFilesComparator(factory)
 	commands := comparator.Compare(listedClientFiles, listedServerFiles)
-	fmt.Printf("commands %+v\n", commands)
 
 	reconstructor := NewContentReconstructor(serverContentCache)
 	applier := NewAdjustmentCommandApplier()
@@ -96,14 +95,17 @@ func assertSyncOffline(t *testing.T, blockSize int, clientFiles []File, serverFi
 	return commands
 }
 
-func assertUniqueNumberOfBlocks(
+func assertNumberOfSentBlocks(
 	t *testing.T,
 	commands []AdjustmentCommand,
-	expectedNumHashedBlocks int,
-	expectedNumContentBlocks int,
+	expectedUniqueNumHashedBlocks int,
+	expectedTotalNumHashedBlocks int,
+	expectedUniqueNumContentBlocks int,
+	expectedTotalNumContentBlocks int,
 ) {
 	uniqueHashes := make(map[string]struct{}, 0)
 	uniqueContents := make(map[string]struct{}, 0)
+	var totalNumHashes, totalNumContents int
 
 	for _, command := range commands {
 		commandApply, ok := command.(AdjustmentCommandApplyBlocksToFile)
@@ -115,14 +117,18 @@ func assertUniqueNumberOfBlocks(
 			switch block := abstractBlock.(type) {
 			case HashedBlock:
 				uniqueHashes[string(block.HashSum())] = struct{}{}
+				totalNumHashes += 1
 			case ContentBlock:
-				uniqueHashes[string(block.Content())] = struct{}{}
+				uniqueContents[string(block.Content())] = struct{}{}
+				totalNumContents += 1
 			}
 		}
 	}
 
-	assert.Equal(t, expectedNumHashedBlocks, len(uniqueHashes))
-	assert.Equal(t, expectedNumContentBlocks, len(uniqueContents))
+	assert.Equal(t, expectedUniqueNumHashedBlocks, len(uniqueHashes))
+	assert.Equal(t, expectedTotalNumHashedBlocks, totalNumHashes)
+	assert.Equal(t, expectedUniqueNumContentBlocks, len(uniqueContents))
+	assert.Equal(t, expectedTotalNumContentBlocks, totalNumContents)
 }
 
 func TestIntegration_Smoke(t *testing.T) {
@@ -301,10 +307,15 @@ func TestIntegration_SyncClientServerOfflineRemoveContent(t *testing.T) {
 		{"a/2", false, "bbbb2345"},
 		{"a/3", false, "aaaa1234"},
 	}
-	assertSyncOffline(t, 4, clientFiles, serverFiles)
+	commands := assertSyncOffline(t, 4, clientFiles, serverFiles)
+	assertNumberOfSentBlocks(
+		t, commands,
+		4, 6,
+		1, 3,
+	)
 }
 
-func TestIntegration_ContentReuse_NoCommands(t *testing.T) {
+func TestIntegration_ContentReuse_OneHashCommand(t *testing.T) {
 	clientFiles := []File{
 		{"a", false, "abcd"},
 	}
@@ -312,7 +323,12 @@ func TestIntegration_ContentReuse_NoCommands(t *testing.T) {
 		{"a", false, "abcd"},
 	}
 	commands := assertSyncOffline(t, 4, clientFiles, serverFiles)
-	assert.Empty(t, commands)
+	assert.Len(t, commands, 1)
+	assertNumberOfSentBlocks(
+		t, commands,
+		1, 1,
+		0, 0,
+	)
 }
 
 func TestIntegration_ContentReuse_AllHashed(t *testing.T) {
@@ -323,6 +339,27 @@ func TestIntegration_ContentReuse_AllHashed(t *testing.T) {
 	serverFiles := []File{
 		{"a", false, "abcd"},
 	}
-	 assertSyncOffline(t, 4, clientFiles, serverFiles)
-	//assertUniqueNumberOfBlocks(t, commands, 5, 0)
+	commands := assertSyncOffline(t, 4, clientFiles, serverFiles)
+	assertNumberOfSentBlocks(
+		t, commands,
+		1, 6,
+		0, 0,
+	)
+}
+
+func TestIntegration_ContentReuse_AllContent(t *testing.T) {
+	clientFiles := []File{
+		{"a", false, "123"},
+		{"b", false, "234"},
+		{"c", false, "234"},
+	}
+	serverFiles := []File{
+		{"a", false, "abcd"},
+	}
+	commands := assertSyncOffline(t, 4, clientFiles, serverFiles)
+	assertNumberOfSentBlocks(
+		t, commands,
+		0, 0,
+		2, 3,
+	)
 }

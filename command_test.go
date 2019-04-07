@@ -133,8 +133,9 @@ func TestFilesComparator_AddOneToNonEmpty(t *testing.T) {
 		makeServerFile(blockSize, "b", false, "1234"),
 	}
 	commands := runComparator(blockSize, clientFiles, serverHashedFiles)
-	assert.Len(t, commands, 1)
+	assert.Len(t, commands, 2)
 	assert.Equal(t, "a", commands[0].(AdjustmentCommandApplyBlocksToFile).filename)
+	assert.Equal(t, "b", commands[1].(AdjustmentCommandApplyBlocksToFile).filename)
 }
 
 func TestFilesComparator_InsertAndAppendContent(t *testing.T) {
