@@ -162,7 +162,7 @@ func TestFilesComparator_InsertAndAppendContent(t *testing.T) {
 
 	assert.Len(t, blocks2, 2)
 	_ = blocks2[0].(HashedBlock)
-	assert.Equal(t, []byte("123"), blocks2[1].(ContentBlock).Content())
+	_ = blocks2[1].(HashedBlock)
 }
 
 func TestFilesComparator_MkOneNewDir(t *testing.T) {
@@ -266,7 +266,7 @@ func TestAdjustmentCommandApplier_Smoke(t *testing.T) {
 	contentCache.AddContents(
 		generatorResult.strongHashes, generatorResult.contentBlocks,
 	)
-	reconstructor := NewContentReconstructor(contentCache)
+	reconstructor := NewContentReconstructor(md5.New(), contentCache)
 
 	fs := NewLoggingFilesystem()
 	w, err := fs.OpenWrite("b")
@@ -299,7 +299,7 @@ func TestAdjustmentCommandApplier_AddOneDir(t *testing.T) {
 	commands := runComparator(blockSize, clientFiles, serverHashedFiles)
 
 	contentCache := NewBlockCache()
-	reconstructor := NewContentReconstructor(contentCache)
+	reconstructor := NewContentReconstructor(md5.New(), contentCache)
 
 	fs := NewLoggingFilesystem()
 	applier := NewAdjustmentCommandApplier()
@@ -322,7 +322,7 @@ func TestAdjustmentCommandApplier_RmOneDir(t *testing.T) {
 	commands := runComparator(blockSize, clientFiles, serverHashedFiles)
 
 	contentCache := NewBlockCache()
-	reconstructor := NewContentReconstructor(contentCache)
+	reconstructor := NewContentReconstructor(md5.New(), contentCache)
 
 	fs := NewLoggingFilesystem()
 	assert.Nil(t, fs.Mkdir("b"))

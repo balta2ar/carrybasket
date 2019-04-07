@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/md5"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"testing"
@@ -9,13 +10,15 @@ import (
 
 func TestContentReconstructor_Smoke(t *testing.T) {
 	strongHashCache := NewBlockCache()
-	reconstructor := NewContentReconstructor(strongHashCache)
+	strongHasher := md5.New()
+	reconstructor := NewContentReconstructor(strongHasher, strongHashCache)
 	reconstructor.Reconstruct(nil, ioutil.Discard)
 }
 
 func TestContentReconstructor_Empty(t *testing.T) {
 	strongHashCache := NewBlockCache()
-	reconstructor := NewContentReconstructor(strongHashCache)
+	strongHasher := md5.New()
+	reconstructor := NewContentReconstructor(strongHasher, strongHashCache)
 	buffer := bytes.NewBuffer(nil)
 	n := reconstructor.Reconstruct([]Block{}, buffer)
 	assert.Equal(t, uint64(0), n)
@@ -24,7 +27,8 @@ func TestContentReconstructor_Empty(t *testing.T) {
 
 func TestContentReconstructor_OneContent(t *testing.T) {
 	strongHashCache := NewBlockCache()
-	reconstructor := NewContentReconstructor(strongHashCache)
+	strongHasher := md5.New()
+	reconstructor := NewContentReconstructor(strongHasher, strongHashCache)
 	buffer := bytes.NewBuffer(nil)
 	blocks := []Block{
 		NewContentBlock(0, 4, []byte("1234")),
@@ -36,7 +40,8 @@ func TestContentReconstructor_OneContent(t *testing.T) {
 
 func TestContentReconstructor_TwoContent(t *testing.T) {
 	strongHashCache := NewBlockCache()
-	reconstructor := NewContentReconstructor(strongHashCache)
+	strongHasher := md5.New()
+	reconstructor := NewContentReconstructor(strongHasher, strongHashCache)
 	buffer := bytes.NewBuffer(nil)
 	blocks := []Block{
 		NewContentBlock(0, 4, []byte("1234")),
@@ -49,7 +54,8 @@ func TestContentReconstructor_TwoContent(t *testing.T) {
 
 func TestContentReconstructor_TwoContentInvalidOffset(t *testing.T) {
 	strongHashCache := NewBlockCache()
-	reconstructor := NewContentReconstructor(strongHashCache)
+	strongHasher := md5.New()
+	reconstructor := NewContentReconstructor(strongHasher, strongHashCache)
 	buffer := bytes.NewBuffer(nil)
 	blocks := []Block{
 		NewContentBlock(0, 4, []byte("1234")),
@@ -61,7 +67,8 @@ func TestContentReconstructor_TwoContentInvalidOffset(t *testing.T) {
 
 func TestContentReconstructor_TwoContentReorder(t *testing.T) {
 	strongHashCache := NewBlockCache()
-	reconstructor := NewContentReconstructor(strongHashCache)
+	strongHasher := md5.New()
+	reconstructor := NewContentReconstructor(strongHasher, strongHashCache)
 	buffer := bytes.NewBuffer(nil)
 	blocks := []Block{
 		NewContentBlock(4, 4, []byte("1234")),
@@ -74,7 +81,8 @@ func TestContentReconstructor_TwoContentReorder(t *testing.T) {
 
 func TestContentReconstructor_MissingHash(t *testing.T) {
 	strongHashCache := NewBlockCache()
-	reconstructor := NewContentReconstructor(strongHashCache)
+	strongHasher := md5.New()
+	reconstructor := NewContentReconstructor(strongHasher, strongHashCache)
 	buffer := bytes.NewBuffer(nil)
 	blocks := []Block{
 		NewHashedBlock(0, 4, []byte("abcd")),
@@ -86,7 +94,8 @@ func TestContentReconstructor_MissingHash(t *testing.T) {
 func TestContentReconstructor_ContentAndHash(t *testing.T) {
 	strongHashCache := NewBlockCache()
 	strongHashCache.Set([]byte("#abcd"), NewContentBlock(0, 4, []byte("wxyz")))
-	reconstructor := NewContentReconstructor(strongHashCache)
+	strongHasher := md5.New()
+	reconstructor := NewContentReconstructor(strongHasher, strongHashCache)
 	buffer := bytes.NewBuffer(nil)
 	blocks := []Block{
 		NewContentBlock(0, 4, []byte("1234")),

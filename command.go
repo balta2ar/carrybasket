@@ -35,16 +35,6 @@ func NewFilesComparator(producerFactory ProducerFactory) *filesComparator {
 	}
 }
 
-func anyContentBlocks(blocks []Block) bool {
-	for _, block := range blocks {
-		if _, ok := block.(ContentBlock); ok {
-			return true
-		}
-	}
-
-	return false
-}
-
 func createCacheFromServerFiles(serverHashedFiles []HashedFile) (BlockCache, BlockCache) {
 	fastCache := NewBlockCache()
 	strongCache := NewBlockCache()
@@ -65,7 +55,7 @@ func (fc *filesComparator) Compare(
 	var i, j int
 	fastCache, strongCache := createCacheFromServerFiles(serverHashedFiles)
 
-	addClientFile := func(i int, fastHashBlocks []Block, strongHashBlocks []Block) {
+	addClientFile := func(i int) {
 		// both are files
 		producer := fc.producerFactory.MakeProducerWithCache(fastCache, strongCache)
 		blocks := producer.Scan(clientFiles[i].Rw)
@@ -74,7 +64,7 @@ func (fc *filesComparator) Compare(
 		)
 	}
 
-	addClientFileOrDir := func(i int, fastHashBlocks []Block, strongHashBlocks []Block) {
+	addClientFileOrDir := func(i int) {
 		// called only when the server counterpart is missing
 		if clientFiles[i].IsDir {
 			commands = append(commands,
@@ -85,10 +75,10 @@ func (fc *filesComparator) Compare(
 		}
 
 		// both are files
-		addClientFile(i, fastHashBlocks, strongHashBlocks)
+		addClientFile(i)
 	}
 
-	compareAndAddClientFileOrDir := func(i int, j int, fastHashBlocks []Block, strongHashBlocks []Block) {
+	compareAndAddClientFileOrDir := func(i int, j int) {
 		// called when filenames are the same but isDir flag may be different
 		clientDir, serverDir := clientFiles[i].IsDir, serverHashedFiles[j].IsDir
 		// both are dirs, nothing's changed
@@ -102,7 +92,7 @@ func (fc *filesComparator) Compare(
 			commands = append(commands,
 				AdjustmentCommandRemoveFile{serverHashedFiles[j].Filename},
 			)
-			addClientFile(i, nil, nil)
+			addClientFile(i)
 			return
 		}
 
@@ -119,13 +109,13 @@ func (fc *filesComparator) Compare(
 		}
 
 		// both are files
-		addClientFile(i, fastHashBlocks, strongHashBlocks)
+		addClientFile(i)
 	}
 
 	for i < len(clientFiles) && j < len(serverHashedFiles) {
 		if clientFiles[i].Filename < serverHashedFiles[j].Filename {
 			// new client file, add it
-			addClientFileOrDir(i, nil, nil)
+			addClientFileOrDir(i)
 			i += 1
 		} else if clientFiles[i].Filename > serverHashedFiles[j].Filename {
 			// new server file, remove it
@@ -135,7 +125,7 @@ func (fc *filesComparator) Compare(
 			j += 1
 		} else {
 			// file name is the same, compare contents
-			compareAndAddClientFileOrDir(i, j, serverHashedFiles[j].FastHashes, serverHashedFiles[j].StrongHashes)
+			compareAndAddClientFileOrDir(i, j)
 			i += 1
 			j += 1
 		}
@@ -143,7 +133,7 @@ func (fc *filesComparator) Compare(
 
 	// add new files if any
 	for i < len(clientFiles) {
-		addClientFileOrDir(i, nil, nil)
+		addClientFileOrDir(i)
 		i += 1
 	}
 

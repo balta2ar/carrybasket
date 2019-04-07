@@ -41,7 +41,7 @@ func assertGenerateProduceReconstruct(
 
 	contentCache := NewBlockCache()
 	contentCache.AddContents(generatorResult.strongHashes, generatorResult.contentBlocks)
-	reconstructor := NewContentReconstructor(contentCache)
+	reconstructor := NewContentReconstructor(strongHasher, contentCache)
 	serverOutputFile := bytes.NewBuffer(nil)
 	reconstructor.Reconstruct(producerResult, serverOutputFile)
 
@@ -86,7 +86,7 @@ func assertSyncOffline(t *testing.T, blockSize int, clientFiles []File, serverFi
 	comparator := NewFilesComparator(factory)
 	commands := comparator.Compare(listedClientFiles, listedServerFiles)
 
-	reconstructor := NewContentReconstructor(serverContentCache)
+	reconstructor := NewContentReconstructor(strongHasher, serverContentCache)
 	applier := NewAdjustmentCommandApplier()
 	err = applier.Apply(commands, serverFs, reconstructor)
 	assert.Nil(t, err)
@@ -156,7 +156,7 @@ func TestIntegration_Smoke(t *testing.T) {
 
 	contentCache := NewBlockCache()
 	contentCache.AddContents(generatorResult.strongHashes, generatorResult.contentBlocks)
-	reconstructor := NewContentReconstructor(contentCache)
+	reconstructor := NewContentReconstructor(strongHasher, contentCache)
 	serverOutputFile := bytes.NewBuffer(nil)
 	n := reconstructor.Reconstruct(producerResult, serverOutputFile)
 	assert.Equal(t, uint64(0), n)
@@ -263,7 +263,12 @@ func TestIntegration_SyncClientServerOfflineReplaceFileWithDir(t *testing.T) {
 	serverFiles := []File{
 		{"a", false, "123"},
 	}
-	assertSyncOffline(t, 4, clientFiles, serverFiles)
+	commands := assertSyncOffline(t, 4, clientFiles, serverFiles)
+	assertNumberOfSentBlocks(
+		t, commands,
+		0, 0,
+		2, 2,
+	)
 }
 
 func TestIntegration_SyncClientServerOfflineAppendContent(t *testing.T) {
@@ -277,7 +282,12 @@ func TestIntegration_SyncClientServerOfflineAppendContent(t *testing.T) {
 		{"a/1", false, "1234"},
 		{"a/2", false, "2345"},
 	}
-	assertSyncOffline(t, 4, clientFiles, serverFiles)
+	commands := assertSyncOffline(t, 4, clientFiles, serverFiles)
+	assertNumberOfSentBlocks(
+		t, commands,
+		2, 2,
+		2, 2,
+	)
 }
 
 func TestIntegration_SyncClientServerOfflinePrependContent(t *testing.T) {
@@ -291,7 +301,12 @@ func TestIntegration_SyncClientServerOfflinePrependContent(t *testing.T) {
 		{"a/1", false, "1234"},
 		{"a/2", false, "2345"},
 	}
-	assertSyncOffline(t, 4, clientFiles, serverFiles)
+	commands := assertSyncOffline(t, 4, clientFiles, serverFiles)
+	assertNumberOfSentBlocks(
+		t, commands,
+		2, 2,
+		2, 2,
+	)
 }
 
 func TestIntegration_SyncClientServerOfflineRemoveContent(t *testing.T) {
@@ -310,8 +325,8 @@ func TestIntegration_SyncClientServerOfflineRemoveContent(t *testing.T) {
 	commands := assertSyncOffline(t, 4, clientFiles, serverFiles)
 	assertNumberOfSentBlocks(
 		t, commands,
-		4, 6,
-		1, 3,
+		5, 8,
+		1, 1,
 	)
 }
 
@@ -359,7 +374,24 @@ func TestIntegration_ContentReuse_AllContent(t *testing.T) {
 	commands := assertSyncOffline(t, 4, clientFiles, serverFiles)
 	assertNumberOfSentBlocks(
 		t, commands,
-		0, 0,
-		2, 3,
+		1, 1,
+		2, 2,
+	)
+}
+
+func TestIntegration_ContentReuse_OneUniqueBlockFromClient(t *testing.T) {
+	clientFiles := []File{
+		{"a", false, "1234"},
+		{"b", false, "12341234"},
+		{"c", false, "123412341234"},
+	}
+	serverFiles := []File{
+		{"a", false, "abcd"},
+	}
+	commands := assertSyncOffline(t, 4, clientFiles, serverFiles)
+	assertNumberOfSentBlocks(
+		t, commands,
+		1, 5,
+		1, 1,
 	)
 }

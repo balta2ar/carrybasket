@@ -82,8 +82,29 @@ func (bp *blockProducer) tryEmitContent(blocks []Block) []Block {
 
 func (bp *blockProducer) emitContent(blocks []Block, offset int, content []byte) []Block {
 	contentBlock := NewContentBlock(uint64(offset), uint64(len(content)), content)
+	bp.updateBothCachesWithContent(contentBlock)
 	blocks = append(blocks, contentBlock)
 	return blocks
+}
+
+// Update fast & strong caches with content from client. This is necessary
+// to make sure we don't send the same blocks of content from the client
+// twice and more. Each content block is sent once, then cached, then
+// its strong hash is sent.
+func (bp *blockProducer) updateBothCachesWithContent(contentBlock ContentBlock) {
+	bp.fastHasher.Reset()
+	_,_ = bp.fastHasher.Write(contentBlock.Content())
+	fastHash := bp.fastHasher.Sum(nil)
+
+	bp.strongHasher.Reset()
+	bp.strongHasher.Write(contentBlock.Content())
+	strongHash := bp.strongHasher.Sum(nil)
+
+	fastHashedBlock := NewHashedBlock(contentBlock.Offset(), contentBlock.Size(), fastHash)
+	strongHashedBlock := NewHashedBlock(contentBlock.Offset(), contentBlock.Size(), strongHash)
+
+	bp.fastHashCache.Set(fastHash, fastHashedBlock)
+	bp.strongHashCache.Set(strongHash, strongHashedBlock)
 }
 
 func (bp *blockProducer) tryEmitHash(blocks []Block, r io.Reader) ([]Block, bool) {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"hash"
 	"io"
 	"sort"
 )
@@ -15,11 +16,13 @@ type ContentReconstructor interface {
 }
 
 type contentReconstructor struct {
+	strongHasher    hash.Hash
 	strongHashCache BlockCache
 }
 
-func NewContentReconstructor(strongHashCache BlockCache) *contentReconstructor {
+func NewContentReconstructor(strongHasher hash.Hash, strongHashCache BlockCache) *contentReconstructor {
 	return &contentReconstructor{
+		strongHasher,
 		strongHashCache,
 	}
 }
@@ -47,6 +50,7 @@ func (cr *contentReconstructor) Reconstruct(blocks []Block, w io.Writer) uint64 
 		case ContentBlock:
 			n, _ := w.Write(block.Content())
 			offset += uint64(n)
+			cr.updateStrongCacheWithContent(block)
 
 		case HashedBlock:
 			hashedBlock, ok := cr.strongHashCache.Get(block.HashSum())
@@ -63,4 +67,14 @@ func (cr *contentReconstructor) Reconstruct(blocks []Block, w io.Writer) uint64 
 	}
 
 	return offset
+}
+
+// Client will not send the same content block twice. Instead, it will reuse already
+// sent blocks. Thus we need to hash new content blocks that we see because they
+// maybe come as strong hashed blocks later in the stream.
+func (cr *contentReconstructor) updateStrongCacheWithContent(contentBlock ContentBlock) {
+	cr.strongHasher.Reset()
+	cr.strongHasher.Write(contentBlock.Content())
+	strongHash := cr.strongHasher.Sum(nil)
+	cr.strongHashCache.Set(strongHash, contentBlock)
 }
