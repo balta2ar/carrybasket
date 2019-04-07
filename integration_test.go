@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"hash"
+	"io/ioutil"
 	"strings"
 	"testing"
 )
@@ -60,6 +61,68 @@ func makeFilesystem(files []File) VirtualFilesystem {
 	}
 
 	return fs
+}
+
+func assertSyncOffline(t *testing.T, blockSize int, clientFiles []File, serverFiles []File) []AdjustmentCommand {
+	makeFastHash := func() hash.Hash32 { return NewMackerras(blockSize) }
+	makeStrongHash := func() hash.Hash { return md5.New() }
+
+	fastHasher := makeFastHash()
+	strongHasher := makeStrongHash()
+	generator := NewHashGenerator(blockSize, fastHasher, strongHasher)
+
+	clientFs := makeFilesystem(clientFiles)
+	listedClientFiles, err := ListClientFiles(clientFs)
+	assert.Nil(t, err)
+	assert.Len(t, listedClientFiles, len(clientFiles))
+
+	serverFs := makeFilesystem(serverFiles)
+	serverContentCache := NewBlockCache()
+	listedServerFiles, err := ListServerFiles(serverFs, generator, serverContentCache)
+	assert.Nil(t, err)
+	assert.Len(t, listedServerFiles, len(serverFiles))
+
+	factory := NewProducerFactory(blockSize, makeFastHash, makeStrongHash)
+	comparator := NewFilesComparator(factory)
+	commands := comparator.Compare(listedClientFiles, listedServerFiles)
+	fmt.Printf("commands %+v\n", commands)
+
+	reconstructor := NewContentReconstructor(serverContentCache)
+	applier := NewAdjustmentCommandApplier()
+	err = applier.Apply(commands, serverFs, reconstructor)
+	assert.Nil(t, err)
+
+	assertFilesystemsEqual(t, clientFs, serverFs)
+	return commands
+}
+
+func assertUniqueNumberOfBlocks(
+	t *testing.T,
+	commands []AdjustmentCommand,
+	expectedNumHashedBlocks int,
+	expectedNumContentBlocks int,
+) {
+	uniqueHashes := make(map[string]struct{}, 0)
+	uniqueContents := make(map[string]struct{}, 0)
+
+	for _, command := range commands {
+		commandApply, ok := command.(AdjustmentCommandApplyBlocksToFile)
+		if !ok {
+			continue
+		}
+
+		for _, abstractBlock := range commandApply.blocks {
+			switch block := abstractBlock.(type) {
+			case HashedBlock:
+				uniqueHashes[string(block.HashSum())] = struct{}{}
+			case ContentBlock:
+				uniqueHashes[string(block.Content())] = struct{}{}
+			}
+		}
+	}
+
+	assert.Equal(t, expectedNumHashedBlocks, len(uniqueHashes))
+	assert.Equal(t, expectedNumContentBlocks, len(uniqueContents))
 }
 
 func TestIntegration_Smoke(t *testing.T) {
@@ -132,44 +195,132 @@ func assertFilesystemsEqual(t *testing.T, leftFs VirtualFilesystem, rightFs Virt
 	assert.Equal(t, len(leftFiles), len(rightFiles))
 	assert.Equal(t, leftFiles, rightFiles)
 
-	// TODO: compare each file's content and IsDir flag
+	for i := 0; i < len(leftFiles); i++ {
+		assert.Equal(t, leftFs.IsDir(leftFiles[i]), rightFs.IsDir(rightFiles[i]))
+		if !leftFs.IsDir(leftFiles[i]) {
+			leftRw, err := leftFs.Open(leftFiles[i])
+			assert.Nil(t, err)
+			assert.NotNil(t, leftRw)
+			rightRw, err := leftFs.Open(rightFiles[i])
+			assert.Nil(t, err)
+			assert.NotNil(t, rightRw)
+
+			leftContents, err := ioutil.ReadAll(leftRw)
+			rightContents, err := ioutil.ReadAll(rightRw)
+			assert.Equal(t, leftContents, rightContents)
+		}
+	}
 }
 
-func TestIntegration_SyncClientServerOffline(t *testing.T) {
-	blockSize := 4
-	makeFastHash := func() hash.Hash32 { return NewMackerras(blockSize) }
-	makeStrongHash := func() hash.Hash { return md5.New() }
+func TestIntegration_SyncClientServerOfflineEmpty(t *testing.T) {
+	clientFiles := []File{
+	}
+	serverFiles := []File{
+		{"b", false, "1234"},
+	}
+	assertSyncOffline(t, 4, clientFiles, serverFiles)
+}
 
-	fastHasher := makeFastHash()
-	strongHasher := makeStrongHash()
-	generator := NewHashGenerator(blockSize, fastHasher, strongHasher)
-
+func TestIntegration_SyncClientServerOfflineDirAndOverwrite(t *testing.T) {
 	clientFiles := []File{
 		{"a", true, ""},
 		{"b", false, "abcd"},
 	}
-	clientFs := makeFilesystem(clientFiles)
-	listedClientFiles, err := ListClientFiles(clientFs)
-	assert.Nil(t, err)
-	assert.Len(t, listedClientFiles, 2)
-
 	serverFiles := []File{
 		{"b", false, "1234"},
 	}
-	serverFs := makeFilesystem(serverFiles)
-	serverContentCache := NewBlockCache()
-	listedServerFiles, err := ListServerFiles(serverFs, generator, serverContentCache)
-	assert.Nil(t, err)
-	assert.Len(t, listedServerFiles, 1)
+	assertSyncOffline(t, 4, clientFiles, serverFiles)
+}
 
-	factory := NewProducerFactory(blockSize, makeFastHash, makeStrongHash)
-	comparator := NewFilesComparator(factory)
-	commands := comparator.Compare(listedClientFiles, listedServerFiles)
+func TestIntegration_SyncClientServerOfflineReplaceDirWithFile(t *testing.T) {
+	clientFiles := []File{
+		{"a", false, "123"},
+		{"b", false, "123"},
+	}
+	serverFiles := []File{
+		{"a", true, ""},
+		{"a/1", false, "1"},
+		{"a/2", false, "2"},
+		{"b", false, "123"},
+	}
+	assertSyncOffline(t, 4, clientFiles, serverFiles)
+}
 
-	reconstructor := NewContentReconstructor(serverContentCache)
-	applier := NewAdjustmentCommandApplier()
-	err = applier.Apply(commands, serverFs, reconstructor)
-	assert.Nil(t, err)
+func TestIntegration_SyncClientServerOfflineReplaceFileWithDir(t *testing.T) {
+	clientFiles := []File{
+		{"a", true, ""},
+		{"a/1", false, "1"},
+		{"a/2", false, "2"},
+	}
+	serverFiles := []File{
+		{"a", false, "123"},
+	}
+	assertSyncOffline(t, 4, clientFiles, serverFiles)
+}
 
-	assertFilesystemsEqual(t, clientFs, serverFs)
+func TestIntegration_SyncClientServerOfflineAppendContent(t *testing.T) {
+	clientFiles := []File{
+		{"a", true, ""},
+		{"a/1", false, "1234aaaa"},
+		{"a/2", false, "2345bbbb"},
+	}
+	serverFiles := []File{
+		{"a", true, ""},
+		{"a/1", false, "1234"},
+		{"a/2", false, "2345"},
+	}
+	assertSyncOffline(t, 4, clientFiles, serverFiles)
+}
+
+func TestIntegration_SyncClientServerOfflinePrependContent(t *testing.T) {
+	clientFiles := []File{
+		{"a", true, ""},
+		{"a/1", false, "aaaa1234"},
+		{"a/2", false, "bbbb2345"},
+	}
+	serverFiles := []File{
+		{"a", true, ""},
+		{"a/1", false, "1234"},
+		{"a/2", false, "2345"},
+	}
+	assertSyncOffline(t, 4, clientFiles, serverFiles)
+}
+
+func TestIntegration_SyncClientServerOfflineRemoveContent(t *testing.T) {
+	clientFiles := []File{
+		{"a", true, ""},
+		{"a/1", false, "XXXXaaaa1234"},
+		{"a/2", false, "bbbbXXXX2345"},
+		{"a/3", false, "aaaa1234XXXX"},
+	}
+	serverFiles := []File{
+		{"a", true, ""},
+		{"a/1", false, "aaaa1234"},
+		{"a/2", false, "bbbb2345"},
+		{"a/3", false, "aaaa1234"},
+	}
+	assertSyncOffline(t, 4, clientFiles, serverFiles)
+}
+
+func TestIntegration_ContentReuse_NoCommands(t *testing.T) {
+	clientFiles := []File{
+		{"a", false, "abcd"},
+	}
+	serverFiles := []File{
+		{"a", false, "abcd"},
+	}
+	commands := assertSyncOffline(t, 4, clientFiles, serverFiles)
+	assert.Empty(t, commands)
+}
+
+func TestIntegration_ContentReuse_AllHashed(t *testing.T) {
+	clientFiles := []File{
+		{"a", false, "abcdabcdabcd"},
+		{"b", false, "abcdabcdabcd"},
+	}
+	serverFiles := []File{
+		{"a", false, "abcd"},
+	}
+	 assertSyncOffline(t, 4, clientFiles, serverFiles)
+	//assertUniqueNumberOfBlocks(t, commands, 5, 0)
 }
