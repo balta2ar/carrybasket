@@ -24,7 +24,6 @@ type blockProducer struct {
 
 	offset      int    // current reading offset
 	cutoff      int    // can't rewind backwards earlier than this cut-off offset
-	bytesRemain int    // how many bytes remain in the input
 	content     []byte // accumulated content so far that has not been emitted
 }
 
@@ -44,7 +43,6 @@ func NewBlockProducer(
 
 		offset:      0,
 		cutoff:      0,
-		bytesRemain: 0,
 		content:     nil,
 	}
 	producer.Reset()
@@ -172,7 +170,6 @@ func (bp *blockProducer) advance(r io.Reader, n int) (error) {
 	}
 	_, _ = bp.fastHasher.Write(buffer)
 	bp.offset += n
-	bp.bytesRemain -= n
 	bp.content = append(bp.content, buffer...)
 
 	return nil
@@ -183,6 +180,7 @@ func (bp *blockProducer) advance(r io.Reader, n int) (error) {
 /// the details about the block size.
 type ProducerFactory interface {
 	MakeProducer(fastHashBlocks []Block, strongHashBlocks []Block) BlockProducer
+	MakeProducerWithCache(fastCache BlockCache, strongCache BlockCache) BlockProducer
 }
 
 type MakeFastHash func() hash.Hash32
