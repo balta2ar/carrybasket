@@ -10,23 +10,23 @@ import (
 func TestLoggingFilesystem_Everything(t *testing.T) {
 	fs := NewLoggingFilesystem()
 
-	handle, err := fs.Open("d")
-	assert.NotNil(t, handle)
+	w, err := fs.OpenWrite("d")
+	assert.NotNil(t, w)
 	assert.Nil(t, err)
 
-	_, err = handle.Write([]byte("abc"))
+	_, err = w.Write([]byte("abc"))
 	assert.Nil(t, err)
 
-	handle, err = fs.Open("x")
-	assert.NotNil(t, handle)
+	w, err = fs.OpenWrite("x")
+	assert.NotNil(t, w)
 	assert.Nil(t, err)
-	_, err = handle.Write([]byte("abc"))
+	_, err = w.Write([]byte("abc"))
 	assert.Nil(t, err)
 
-	handle, err = fs.Open("y")
-	assert.NotNil(t, handle)
+	w, err = fs.OpenWrite("y")
+	assert.NotNil(t, w)
 	assert.Nil(t, err)
-	_, err = handle.Write([]byte("123"))
+	_, err = w.Write([]byte("123"))
 	assert.Nil(t, err)
 
 	_ = fs.Mkdir("dir")
@@ -36,9 +36,9 @@ func TestLoggingFilesystem_Everything(t *testing.T) {
 	assert.Nil(t, fs.Move("x", "d"))
 	assert.Nil(t, fs.Move("d", "b"))
 
-	handle, err = fs.Open("b")
+	r, err := fs.OpenRead("b")
 	assert.Nil(t, err)
-	result, err := ioutil.ReadAll(handle)
+	result, err := ioutil.ReadAll(r)
 	assert.Equal(t, "abc", string(result))
 
 	assert.Nil(t, fs.Delete("b"))
@@ -50,15 +50,15 @@ func TestLoggingFilesystem_Everything(t *testing.T) {
 	assert.Equal(t, []string{"dir", "y"}, filenames)
 
 	assert.Equal(t, []string{
-		"open d",
-		"open x",
-		"open y",
+		"openwrite d",
+		"openwrite x",
+		"openwrite y",
 		"mkdir dir",
 		"move a b",
 		"move y dir",
 		"move x d",
 		"move d b",
-		"open b",
+		"openread b",
 		"delete b",
 		"delete b",
 		"delete a",
@@ -69,26 +69,36 @@ func TestLoggingFilesystem_Everything(t *testing.T) {
 func TestLoggingFilesystem_OpenWriteOpenReadOpenRead(t *testing.T) {
 	fs := NewLoggingFilesystem()
 
-	handle, err := fs.Open("a")
-	assert.NotNil(t, handle)
+	w, err := fs.OpenWrite("a")
+	assert.NotNil(t, w)
 	assert.Nil(t, err)
 
-	_, err = handle.Write([]byte("abc"))
+	_, err = w.Write([]byte("abc"))
 	assert.Nil(t, err)
 
-	handle, err = fs.Open("a")
-	assert.NotNil(t, handle)
+	// This read is bytes.Buffer-specific. This is used to
+	// advance read pointer to make sure that following reads
+	// are reset when Open is called.
+	r, err := fs.OpenRead("a")
+	assert.NotNil(t, w)
 	assert.Nil(t, err)
-
-	result, err := ioutil.ReadAll(handle)
+	result, err := ioutil.ReadAll(r)
 	assert.Nil(t, err)
 	assert.Equal(t, "abc", string(result))
 
-	handle, err = fs.Open("a")
-	assert.NotNil(t, handle)
+	r, err = fs.OpenRead("a")
+	assert.NotNil(t, r)
 	assert.Nil(t, err)
 
-	result, err = ioutil.ReadAll(handle)
+	result, err = ioutil.ReadAll(r)
+	assert.Nil(t, err)
+	assert.Equal(t, "abc", string(result))
+
+	r, err = fs.OpenRead("a")
+	assert.NotNil(t, r)
+	assert.Nil(t, err)
+
+	result, err = ioutil.ReadAll(r)
 	assert.Nil(t, err)
 	assert.Equal(t, "abc", string(result))
 
@@ -102,15 +112,25 @@ func TestLoggingFilesystem_IsPath(t *testing.T) {
 
 	assert.False(t, fs.IsPath("a"))
 
-	handle, err := fs.Open("a")
-	assert.NotNil(t, handle)
+	r, err := fs.OpenRead("a")
+	assert.Nil(t, r)
+	assert.Error(t, err)
+
+	w, err := fs.OpenWrite("a")
+	assert.NotNil(t, w)
+	assert.Nil(t, err)
+
+	r, err = fs.OpenRead("a")
+	assert.NotNil(t, r)
 	assert.Nil(t, err)
 
 	assert.True(t, fs.IsPath("a"))
 
 	assert.Equal(t, []string{
 		"ispath a",
-		"open a",
+		"openread a",
+		"openwrite a",
+		"openread a",
 		"ispath a",
 	}, fs.Actions)
 }
@@ -120,15 +140,19 @@ func TestLoggingFilesystem_IsDirMkDir(t *testing.T) {
 
 	assert.False(t, fs.IsDir("a"))
 
-	handle, err := fs.Open("a")
-	assert.NotNil(t, handle)
+	r, err := fs.OpenRead("a")
+	assert.Nil(t, r)
+	assert.Error(t, err)
+
+	w, err := fs.OpenWrite("a")
+	assert.NotNil(t, w)
 	assert.Nil(t, err)
 
 	assert.False(t, fs.IsDir("a"))
 	assert.Error(t, fs.Mkdir("a"))
 	assert.Nil(t, fs.Mkdir("b"))
 
-	handle, err = fs.Open("b")
+	r, err = fs.OpenRead("b")
 	assert.Nil(t, nil)
 	assert.Error(t, err)
 
@@ -138,11 +162,12 @@ func TestLoggingFilesystem_IsDirMkDir(t *testing.T) {
 
 	assert.Equal(t, []string{
 		"isdir a",
-		"open a",
+		"openread a",
+		"openwrite a",
 		"isdir a",
 		"mkdir a",
 		"mkdir b",
-		"open b",
+		"openread b",
 		"listall",
 	}, fs.Actions)
 }
@@ -156,10 +181,10 @@ func TestListClientFiles_Smoke(t *testing.T) {
 
 func TestListClientFiles_FilesAndDirs(t *testing.T) {
 	fs := NewLoggingFilesystem()
-	_, _ = fs.Open("a")
+	_, _ = fs.OpenWrite("a")
 	_ = fs.Mkdir("b")
-	_, _ = fs.Open("b/nested1")
-	_, _ = fs.Open("b/nested2")
+	_, _ = fs.OpenWrite("b/nested1")
+	_, _ = fs.OpenWrite("b/nested2")
 
 	files, err := ListClientFiles(fs)
 	assert.Nil(t, err)
@@ -193,14 +218,14 @@ func TestListServerFiles_Smoke(t *testing.T) {
 func TestListServerFiles_FilesAndDirs(t *testing.T) {
 	fs := NewLoggingFilesystem()
 	_ = fs.Mkdir("a")
-	rw, _ := fs.Open("b")
-	_, _ = rw.Write([]byte("abc"))
-	rw, _ = fs.Open("c")
-	_, _ = rw.Write([]byte("abcd"))
-	rw, _ = fs.Open("d")
-	_, _ = rw.Write([]byte("abcdefg"))
-	rw, _ = fs.Open("e")
-	_, _ = rw.Write([]byte("abcdefgh"))
+	w, _ := fs.OpenWrite("b")
+	_, _ = w.Write([]byte("abc"))
+	w, _ = fs.OpenWrite("c")
+	_, _ = w.Write([]byte("abcd"))
+	w, _ = fs.OpenWrite("d")
+	_, _ = w.Write([]byte("abcdefg"))
+	w, _ = fs.OpenWrite("e")
+	_, _ = w.Write([]byte("abcdefgh"))
 
 	blockSize := 4
 	fastHasher := NewMackerras(blockSize)

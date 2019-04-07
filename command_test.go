@@ -268,9 +268,9 @@ func TestAdjustmentCommandApplier_Smoke(t *testing.T) {
 	reconstructor := NewContentReconstructor(contentCache)
 
 	fs := NewLoggingFilesystem()
-	rw, err := fs.Open("b")
+	w, err := fs.OpenWrite("b")
 	assert.Nil(t, err)
-	n, err := rw.Write([]byte(serverContent))
+	n, err := w.Write([]byte(serverContent))
 	assert.Nil(t, err)
 	assert.Equal(t, len(serverContent), n)
 
@@ -278,7 +278,7 @@ func TestAdjustmentCommandApplier_Smoke(t *testing.T) {
 	err = applier.Apply(commands, fs, reconstructor)
 	assert.Nil(t, err)
 
-	r, err := fs.Open("a")
+	r, err := fs.OpenRead("a")
 	result, err := ioutil.ReadAll(r)
 	assert.Nil(t, err)
 	assert.Equal(t, clientContent, string(result))

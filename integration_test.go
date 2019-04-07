@@ -55,8 +55,8 @@ func makeFilesystem(files []File) VirtualFilesystem {
 		if file.IsDir {
 			_ = fs.Mkdir(file.Filename)
 		} else {
-			rw, _ := fs.Open(file.Filename)
-			_, _ = rw.Write([]byte(file.Content))
+			w, _ := fs.OpenWrite(file.Filename)
+			_, _ = w.Write([]byte(file.Content))
 		}
 	}
 
@@ -189,6 +189,7 @@ func TestIntegration_ContentEquality(t *testing.T) {
 func assertFilesystemsEqual(t *testing.T, leftFs VirtualFilesystem, rightFs VirtualFilesystem) {
 	leftFiles, err := leftFs.ListAll()
 	assert.Nil(t, err)
+
 	rightFiles, err := rightFs.ListAll()
 	assert.Nil(t, err)
 
@@ -198,15 +199,16 @@ func assertFilesystemsEqual(t *testing.T, leftFs VirtualFilesystem, rightFs Virt
 	for i := 0; i < len(leftFiles); i++ {
 		assert.Equal(t, leftFs.IsDir(leftFiles[i]), rightFs.IsDir(rightFiles[i]))
 		if !leftFs.IsDir(leftFiles[i]) {
-			leftRw, err := leftFs.Open(leftFiles[i])
+			leftR, err := leftFs.OpenRead(leftFiles[i])
 			assert.Nil(t, err)
-			assert.NotNil(t, leftRw)
-			rightRw, err := leftFs.Open(rightFiles[i])
-			assert.Nil(t, err)
-			assert.NotNil(t, rightRw)
+			assert.NotNil(t, leftR)
 
-			leftContents, err := ioutil.ReadAll(leftRw)
-			rightContents, err := ioutil.ReadAll(rightRw)
+			rightR, err := rightFs.OpenRead(rightFiles[i])
+			assert.Nil(t, err)
+			assert.NotNil(t, rightR)
+
+			leftContents, err := ioutil.ReadAll(leftR)
+			rightContents, err := ioutil.ReadAll(rightR)
 			assert.Equal(t, leftContents, rightContents)
 		}
 	}

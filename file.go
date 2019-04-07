@@ -1,13 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/pkg/errors"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 type HashedFile struct {
@@ -27,7 +27,8 @@ type VirtualFile struct {
 type VirtualFilesystem interface {
 	Move(sourceFilename string, destFilename string) error
 	Delete(filename string) error
-	Open(filename string) (io.ReadWriter, error)
+	OpenRead(filename string) (io.Reader, error)
+	OpenWrite(filename string) (io.Writer, error)
 	IsPath(filename string) bool
 	IsDir(filename string) bool
 	Mkdir(filename string) error
@@ -35,14 +36,14 @@ type VirtualFilesystem interface {
 }
 
 type loggingFilesystem struct {
-	Actions []string                 /// actions recorded after calls to the filesystem
-	storage map[string]*bytes.Buffer /// internal storage for filenames and data
+	Actions []string                    /// actions recorded after calls to the filesystem
+	storage map[string]*strings.Builder /// internal storage for filenames and data
 }
 
 func NewLoggingFilesystem() *loggingFilesystem {
 	return &loggingFilesystem{
 		Actions: make([]string, 0),
-		storage: make(map[string]*bytes.Buffer),
+		storage: make(map[string]*strings.Builder),
 	}
 }
 
@@ -69,27 +70,36 @@ func (lf *loggingFilesystem) Delete(filename string) error {
 	return errors.New("file does not exist")
 }
 
-func (lf *loggingFilesystem) Open(filename string) (io.ReadWriter, error) {
-	lf.Actions = append(lf.Actions, fmt.Sprintf("open %v", filename))
-	rw, ok := lf.storage[filename]
-	if ok {
-		if rw == nil {
-			return nil, errors.New("file is a directory")
-		}
-
-		// Multiple concurrent readers and writers are not supported
-		// in this virtual filesystem.
-		// This is a terrible thing to do, but it's fine since this
-		// concrete implementation is only supposed to be used in
-		// tests.
-		buffer := bytes.NewBuffer(rw.Bytes())
-		lf.storage[filename] = buffer
-		return rw, nil
+func (lf *loggingFilesystem) OpenRead(filename string) (io.Reader, error) {
+	lf.Actions = append(lf.Actions, fmt.Sprintf("openread %v", filename))
+	r, ok := lf.storage[filename]
+	if !ok {
+		return nil, errors.New("file does not exist")
 	}
 
-	buffer := bytes.NewBuffer(nil)
+	if r == nil {
+		return nil, errors.New("file is a directory")
+	}
+
+	// Multiple concurrent readers and writers are not supported
+	// in this virtual filesystem.
+	// This is a terrible thing to do, but it's fine since this
+	// concrete implementation is only supposed to be used in
+	// tests.
+	return strings.NewReader(r.String()), nil
+}
+
+func (lf *loggingFilesystem) OpenWrite(filename string) (io.Writer, error) {
+	lf.Actions = append(lf.Actions, fmt.Sprintf("openwrite %v", filename))
+	rw, ok := lf.storage[filename]
+	if ok && (rw == nil) {
+		return nil, errors.New("file is a directory")
+	}
+
+	buffer := &strings.Builder{}
 	lf.storage[filename] = buffer
 	return buffer, nil
+
 }
 
 func (lf *loggingFilesystem) IsPath(filename string) bool {
@@ -139,8 +149,12 @@ func (lf *actualFilesystem) Delete(filename string) error {
 	return os.Remove(filename)
 }
 
-func (lf *actualFilesystem) Open(filename string) (io.ReadWriter, error) {
-	return os.Open(filename)
+func (lf *actualFilesystem) OpenRead(filename string) (io.Reader, error) {
+	return os.OpenFile(filename, os.O_RDONLY, 0644)
+}
+
+func (lf *actualFilesystem) OpenWrite(filename string) (io.Writer, error) {
+	return os.OpenFile(filename, os.O_WRONLY|os.O_TRUNC, 0644)
 }
 
 func (lf *actualFilesystem) IsPath(filename string) bool {
@@ -193,11 +207,7 @@ func ListClientFiles(fs VirtualFilesystem) ([]VirtualFile, error) {
 				Rw:       nil,
 			})
 		} else {
-			_, err := fs.Open(filename)
-			if err != nil {
-				return nil, errors.Wrap(err, "cannot open file")
-			}
-			r, err := fs.Open(filename)
+			r, err := fs.OpenRead(filename)
 			if err != nil {
 				return nil, errors.Wrap(err, "cannot open file")
 			}
@@ -232,11 +242,7 @@ func ListServerFiles(
 				StrongHashes: nil,
 			})
 		} else {
-			_, err := fs.Open(filename)
-			if err != nil {
-				return nil, errors.Wrap(err, "cannot open file")
-			}
-			r, err := fs.Open(filename)
+			r, err := fs.OpenRead(filename)
 			if err != nil {
 				return nil, errors.Wrap(err, "cannot open file")
 			}

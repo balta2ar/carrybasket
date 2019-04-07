@@ -191,7 +191,7 @@ func (aca *adjustmentCommandApplier) Apply(
 
 		case AdjustmentCommandApplyBlocksToFile:
 			tempFilename := command.filename + ".tmp"
-			w, err := fs.Open(tempFilename)
+			w, err := fs.OpenWrite(tempFilename)
 			if err != nil {
 				return err
 			}
