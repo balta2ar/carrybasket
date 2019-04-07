@@ -45,23 +45,33 @@ func anyContentBlocks(blocks []Block) bool {
 	return false
 }
 
+func createCacheFromServerFiles(serverHashedFiles []HashedFile) (BlockCache, BlockCache) {
+	fastCache := NewBlockCache()
+	strongCache := NewBlockCache()
+
+	for _, hashedFile := range serverHashedFiles {
+		fastCache.AddHashes(hashedFile.FastHashes)
+		strongCache.AddHashes(hashedFile.StrongHashes)
+	}
+
+	return fastCache, strongCache
+}
+
 func (fc *filesComparator) Compare(
 	clientFiles []VirtualFile,
 	serverHashedFiles []HashedFile,
 ) []AdjustmentCommand {
 	var commands []AdjustmentCommand
 	var i, j int
+	fastCache, strongCache := createCacheFromServerFiles(serverHashedFiles)
 
 	addClientFile := func(i int, fastHashBlocks []Block, strongHashBlocks []Block) {
 		// both are files
-		producer := fc.producerFactory.MakeProducer(fastHashBlocks, strongHashBlocks)
+		producer := fc.producerFactory.MakeProducerWithCache(fastCache, strongCache)
 		blocks := producer.Scan(clientFiles[i].Rw)
-		// if all blocks are hashed, the content is the same, no need to transfer anything
-		if anyContentBlocks(blocks) {
-			commands = append(commands,
-				AdjustmentCommandApplyBlocksToFile{clientFiles[i].Filename, blocks},
-			)
-		}
+		commands = append(commands,
+			AdjustmentCommandApplyBlocksToFile{clientFiles[i].Filename, blocks},
+		)
 	}
 
 	addClientFileOrDir := func(i int, fastHashBlocks []Block, strongHashBlocks []Block) {

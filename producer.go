@@ -205,8 +205,6 @@ func NewProducerFactory(
 }
 
 func (pf *producerFactory) MakeProducer(fastHashBlocks []Block, strongHashBlocks []Block) BlockProducer {
-	fastHash := pf.makeFastHash()
-	strongHash := pf.makeStrongHash()
 	fastCache := NewBlockCache()
 	strongCache := NewBlockCache()
 
@@ -217,6 +215,13 @@ func (pf *producerFactory) MakeProducer(fastHashBlocks []Block, strongHashBlocks
 	if strongHashBlocks != nil {
 		strongCache.AddHashes(strongHashBlocks)
 	}
+
+	return pf.MakeProducerWithCache(fastCache, strongCache)
+}
+
+func (pf *producerFactory) MakeProducerWithCache(fastCache BlockCache, strongCache BlockCache) BlockProducer {
+	fastHash := pf.makeFastHash()
+	strongHash := pf.makeStrongHash()
 
 	return NewBlockProducer(pf.blockSize, fastHash, strongHash, fastCache, strongCache)
 }
