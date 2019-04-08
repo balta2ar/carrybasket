@@ -1,4 +1,4 @@
-package main
+package carrybasket
 
 /// Block of data. Either a content or hash of a content.
 type Block interface {

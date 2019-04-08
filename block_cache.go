@@ -1,4 +1,4 @@
-package main
+package carrybasket
 
 /// Cache for blocks. Maps hash ([]byte) to a block.
 type BlockCache interface {

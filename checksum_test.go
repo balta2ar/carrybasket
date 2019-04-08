@@ -1,4 +1,4 @@
-package main
+package carrybasket
 
 import (
 	"github.com/stretchr/testify/assert"
