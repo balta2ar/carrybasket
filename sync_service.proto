@@ -33,9 +33,12 @@ message ProtoAdjustmentCommand {
     repeated ProtoBlock blocks = 3;
 }
 
-message ProtoEmpty {}
+message ProtoEmpty {
+}
 
 service SyncService {
-    rpc PullHashedBlocks(ProtoEmpty) returns (stream ProtoHashedFile) {}
-    rpc PushHashedAndContentBlocks(stream ProtoAdjustmentCommand) returns (ProtoEmpty) {}
+    rpc PullHashedBlocks (ProtoEmpty) returns (stream ProtoHashedFile) {
+    }
+    rpc PushAdjustmentCommands (stream ProtoAdjustmentCommand) returns (ProtoEmpty) {
+    }
 }
