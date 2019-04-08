@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+// Server-side representation of a file
 type HashedFile struct {
 	Filename     string
 	IsDir        bool
@@ -17,7 +18,7 @@ type HashedFile struct {
 	StrongHashes []Block
 }
 
-/// Entity that is used to abstract away from the actual file system
+/// Client-side representation of a file
 type VirtualFile struct {
 	Filename string
 	IsDir    bool

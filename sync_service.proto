@@ -1,0 +1,41 @@
+syntax = "proto3";
+package carrybasket;
+
+enum ProtoBlockType {
+    HASHED = 0;
+    CONTENT = 1;
+}
+
+message ProtoBlock {
+    ProtoBlockType type = 1;
+    uint64 offset = 2;
+    uint64 size = 3;
+    bytes hashsum = 4;
+    bytes content = 5;
+}
+
+message ProtoHashedFile {
+    string filename = 1;
+    bool is_dir = 2;
+    repeated ProtoBlock fast_hashes = 3;
+    repeated ProtoBlock strong_hashes = 4;
+}
+
+enum ProtoAdjustmentCommandType {
+    REMOVE_FILE = 0;
+    APPLY_BLOCKS_TO_FILE = 1;
+    MK_DIR = 2;
+}
+
+message ProtoAdjustmentCommand {
+    ProtoAdjustmentCommandType type = 1;
+    string filename = 2;
+    repeated ProtoBlock blocks = 3;
+}
+
+message ProtoEmpty {}
+
+service SyncService {
+    rpc PullHashedBlocks(ProtoEmpty) returns (stream ProtoHashedFile) {}
+    rpc PushHashedAndContentBlocks(stream ProtoAdjustmentCommand) returns (ProtoEmpty) {}
+}
