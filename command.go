@@ -188,7 +188,7 @@ func (aca *adjustmentCommandApplier) Apply(
 			if err != nil {
 				return err
 			}
-			//w.Close()
+			// TODO: add w.Close() here
 
 			cr.Reconstruct(command.blocks, w)
 			if err := fs.Move(tempFilename, command.filename); err != nil {
