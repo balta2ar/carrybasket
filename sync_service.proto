@@ -37,7 +37,7 @@ message ProtoEmpty {
 }
 
 service SyncService {
-    rpc PullHashedBlocks (ProtoEmpty) returns (stream ProtoHashedFile) {
+    rpc PullHashedFiles (ProtoEmpty) returns (stream ProtoHashedFile) {
     }
     rpc PushAdjustmentCommands (stream ProtoAdjustmentCommand) returns (ProtoEmpty) {
     }
