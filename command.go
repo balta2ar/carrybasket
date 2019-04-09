@@ -1,5 +1,7 @@
 package carrybasket
 
+import "log"
+
 type AdjustmentCommand interface{}
 
 type AdjustmentCommandRemoveFile struct {
@@ -58,6 +60,7 @@ func (fc *filesComparator) Compare(
 	addClientFile := func(i int) {
 		// both are files
 		producer := fc.producerFactory.MakeProducerWithCache(fastCache, strongCache)
+		log.Printf("scanning file %v\n", clientFiles[i].Filename)
 		blocks := producer.Scan(clientFiles[i].Rw)
 		commands = append(commands,
 			AdjustmentCommandApplyBlocksToFile{clientFiles[i].Filename, blocks},
@@ -185,6 +188,7 @@ func (aca *adjustmentCommandApplier) Apply(
 			if err != nil {
 				return err
 			}
+			//w.Close()
 
 			cr.Reconstruct(command.blocks, w)
 			if err := fs.Move(tempFilename, command.filename); err != nil {

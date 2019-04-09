@@ -3,7 +3,6 @@ package main
 //go:generate protoc -I=.. --go_out=plugins=grpc:../rpc ../sync_service.proto
 
 import (
-	"fmt"
 	"log"
 	"os"
 
@@ -13,21 +12,27 @@ import (
 
 func action(c *cli.Context) error {
 	targetDir := c.Args().Get(0)
-	fmt.Printf("targetDir %v\n", targetDir)
+	log.Printf("targetDir %v\n", targetDir)
 	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
-		log.Fatalln("Please speficy existing target dir")
+		log.Fatalln("Please specify an existing target dir")
 	}
-	fmt.Printf("command %v\n", targetDir)
 
-	blockSize := 4
-	server := carrybasket.NewSyncServiceServer(blockSize, targetDir)
-	err = server.Serve()
+	blockSize := 64 * 1024
+	fs := carrybasket.NewActualFilesystem()
+	address := "localhost:20000"
+
+	log.Printf(
+		"starting server: blockSize %v, targetDir %v, address %v\n",
+		blockSize, targetDir, address,
+	)
+	os.Chdir(targetDir)
+	server := carrybasket.NewSyncServiceServer(blockSize, targetDir, fs, address)
+	err := server.Serve()
 	if err != nil {
-		log.Fatalf("serve error: %v\n", err)
+		log.Fatalf("server serve error: %v\n", err)
 	}
 
-	log.Println("done")
-
+	log.Println("server done")
 	return nil
 }
 

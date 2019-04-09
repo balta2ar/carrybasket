@@ -94,10 +94,11 @@ func (s *syncServiceServer) PullHashedFiles(
 		return err
 	}
 
-	log.Println("sending")
+	log.Println("sending hashed files")
 
 	for _, serverFile := range listedServerFiles {
 		protoHashedFile := serverFile.asProtoHashedFile()
+		log.Printf("sending %v\n", serverFile.Filename)
 		err := stream.Send(&protoHashedFile)
 		if err != nil {
 			log.Printf("send error: %v\n", err)
@@ -130,7 +131,10 @@ func (s *syncServiceServer) PushAdjustmentCommands(
 			log.Printf("recv error: %v\n", err)
 			return err
 		}
-		log.Printf("received protoCommand: %v\n", protoCommand)
+		log.Printf(
+			"received protoCommand for filename: %v\n",
+			protoCommand.Filename,
+		)
 
 		var command AdjustmentCommand
 		switch protoCommand.Type {
@@ -289,7 +293,10 @@ func (c *syncServiceClient) PullHashedFiles() error {
 			log.Printf("recv error %v\n", err)
 			return err
 		}
-		log.Printf("received hashed file: %v\n", protoHashedFile)
+		log.Printf(
+			"received hashed file for filename: %v\n",
+			protoHashedFile.Filename,
+		)
 
 		hashedFile := HashedFile{
 			Filename:     protoHashedFile.Filename,
@@ -327,9 +334,11 @@ func (c *syncServiceClient) PushAdjustmentCommands() error {
 	makeStrongHash := func() hash.Hash { return md5.New() }
 
 	listedClientFiles, err := ListClientFiles(c.fs)
+	log.Printf("client listed %d files\n", len(listedClientFiles))
 
 	factory := NewProducerFactory(c.blockSize, makeFastHash, makeStrongHash)
 	comparator := NewFilesComparator(factory)
+	log.Println("comparing files...")
 	commands := comparator.Compare(listedClientFiles, c.serverHashedFiles)
 
 	pushStream, err := c.client.PushAdjustmentCommands(context.Background())
@@ -337,6 +346,7 @@ func (c *syncServiceClient) PushAdjustmentCommands() error {
 		log.Fatalf("push error: %v\n", err)
 	}
 
+	log.Println("pushing commands...")
 	for _, abstractCommand := range commands {
 		var protoCommand pb.ProtoAdjustmentCommand
 

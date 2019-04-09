@@ -151,11 +151,14 @@ func (lf *actualFilesystem) Delete(filename string) error {
 }
 
 func (lf *actualFilesystem) OpenRead(filename string) (io.Reader, error) {
-	return os.OpenFile(filename, os.O_RDONLY, 0644)
+	return os.Open(filename)
 }
 
 func (lf *actualFilesystem) OpenWrite(filename string) (io.Writer, error) {
-	return os.OpenFile(filename, os.O_WRONLY|os.O_TRUNC, 0644)
+	if err := os.MkdirAll(filepath.Dir(filename), os.ModeDir | 0755); err != nil {
+		return nil, err
+	}
+	return os.Create(filename)
 }
 
 func (lf *actualFilesystem) IsPath(filename string) bool {
@@ -171,7 +174,7 @@ func (lf *actualFilesystem) IsDir(filename string) bool {
 }
 
 func (lf *actualFilesystem) Mkdir(filename string) error {
-	return os.MkdirAll(filename, os.ModeDir)
+	return os.MkdirAll(filename, os.ModeDir | 0755)
 }
 
 func (lf *actualFilesystem) ListAll() ([]string, error) {
