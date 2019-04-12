@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -17,7 +18,7 @@ func action(c *cli.Context) error {
 	log.Println("starting")
 
 	blockSize := 64 * 1024
-	fs := carrybasket.NewActualFilesystem()
+	fs := carrybasket.NewActualFilesystem(".")
 	address := "localhost:20000"
 
 	log.Printf(
@@ -31,20 +32,13 @@ func action(c *cli.Context) error {
 		log.Fatalf("dial error: %v\n", err)
 	}
 	defer client.Close()
-	log.Println("pulling...")
-	err = client.PullHashedFiles()
-	if err != nil {
-		log.Fatalf("pull error: %v\n", err)
-	}
-	log.Println("pull done")
 
-	log.Println("pushing...")
-	err = client.PushAdjustmentCommands()
-	if err != nil {
-		log.Fatalf("push error: %v\n", err)
+	// put code below in a loop
+	if err := client.SyncCycle(); err != nil {
+		log.Fatalf("client sync error: %v\n", err)
 	}
+	// end of loop
 
-	log.Println("push done")
 	return nil
 }
 

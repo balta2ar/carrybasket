@@ -49,12 +49,14 @@ func assertSyncOffline(t *testing.T, blockSize int, clientFiles []File, serverFi
 	strongHasher := makeStrongHash()
 	generator := NewHashGenerator(blockSize, fastHasher, strongHasher)
 
-	clientFs := makeFilesystem(clientFiles)
+	clientFs := NewLoggingFilesystem()
+	createFiles(clientFs, clientFiles)
 	listedClientFiles, err := ListClientFiles(clientFs)
 	assert.Nil(t, err)
 	assert.Len(t, listedClientFiles, len(clientFiles))
 
-	serverFs := makeFilesystem(serverFiles)
+	serverFs := NewLoggingFilesystem()
+	createFiles(serverFs, serverFiles)
 	serverContentCache := NewBlockCache()
 	listedServerFiles, err := ListServerFiles(serverFs, generator, serverContentCache)
 	assert.Nil(t, err)

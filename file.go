@@ -136,55 +136,76 @@ func (lf *loggingFilesystem) ListAll() ([]string, error) {
 	return filenames, nil
 }
 
-type actualFilesystem struct{}
+type actualFilesystem struct {
+	prefix string
+}
 
-func NewActualFilesystem() *actualFilesystem {
-	return &actualFilesystem{}
+func NewActualFilesystem(prefix string) *actualFilesystem {
+	return &actualFilesystem{
+		prefix: prefix,
+	}
+}
+
+func (lf *actualFilesystem) prefixed(filename string) string {
+	return filepath.Join(lf.prefix, filename)
+}
+
+func (lf *actualFilesystem) unprefixed(filename string) string {
+	if strings.HasPrefix(filename, lf.prefix) {
+		return filename[len(lf.prefix)+1:]
+	}
+	return filename
 }
 
 func (lf *actualFilesystem) Move(sourceFilename string, destFilename string) error {
-	return os.Rename(sourceFilename, destFilename)
+	return os.Rename(
+		lf.prefixed(sourceFilename),
+		lf.prefixed(destFilename),
+	)
 }
 
 func (lf *actualFilesystem) Delete(filename string) error {
-	return os.Remove(filename)
+	return os.RemoveAll(lf.prefixed(filename))
 }
 
 func (lf *actualFilesystem) OpenRead(filename string) (io.Reader, error) {
-	return os.Open(filename)
+	return os.Open(lf.prefixed(filename))
 }
 
 func (lf *actualFilesystem) OpenWrite(filename string) (io.Writer, error) {
-	if err := os.MkdirAll(filepath.Dir(filename), os.ModeDir | 0755); err != nil {
+	if err := os.MkdirAll(
+		filepath.Dir(lf.prefixed(filename)),
+		os.ModeDir|0755,
+	); err != nil {
 		return nil, err
 	}
-	return os.Create(filename)
+	return os.Create(lf.prefixed(filename))
 }
 
 func (lf *actualFilesystem) IsPath(filename string) bool {
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
+	if _, err := os.Stat(lf.prefixed(filename)); os.IsNotExist(err) {
 		return false
 	}
 	return true
 }
 
 func (lf *actualFilesystem) IsDir(filename string) bool {
-	stat, err := os.Stat(filename)
+	stat, err := os.Stat(lf.prefixed(filename))
 	return (err == nil) && stat.IsDir()
 }
 
 func (lf *actualFilesystem) Mkdir(filename string) error {
-	return os.MkdirAll(filename, os.ModeDir | 0755)
+	return os.MkdirAll(lf.prefixed(filename), os.ModeDir|0755)
 }
 
 func (lf *actualFilesystem) ListAll() ([]string, error) {
 	filenames := make([]string, 0)
-	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(lf.prefixed("."), func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if path != "." {
-			filenames = append(filenames, path)
+		if path != "." && path != lf.prefix {
+			filenames = append(filenames, lf.unprefixed(path))
 		}
 		return nil
 	})

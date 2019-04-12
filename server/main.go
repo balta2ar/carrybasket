@@ -18,7 +18,7 @@ func action(c *cli.Context) error {
 	}
 
 	blockSize := 64 * 1024
-	fs := carrybasket.NewActualFilesystem()
+	fs := carrybasket.NewActualFilesystem(".")
 	address := "localhost:20000"
 
 	log.Printf(

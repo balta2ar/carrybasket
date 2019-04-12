@@ -12,9 +12,7 @@ type File struct {
 	Content  string
 }
 
-func makeFilesystem(files []File) VirtualFilesystem {
-	fs := NewLoggingFilesystem()
-
+func createFiles(fs VirtualFilesystem, files []File) {
 	for _, file := range files {
 		if file.IsDir {
 			_ = fs.Mkdir(file.Filename)
@@ -23,8 +21,6 @@ func makeFilesystem(files []File) VirtualFilesystem {
 			_, _ = w.Write([]byte(file.Content))
 		}
 	}
-
-	return fs
 }
 
 func assertFilesystemsEqual(t *testing.T, leftFs VirtualFilesystem, rightFs VirtualFilesystem) {

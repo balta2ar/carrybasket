@@ -3,6 +3,7 @@ package carrybasket
 import (
 	"context"
 	"crypto/md5"
+	"github.com/pkg/errors"
 	"hash"
 	"io"
 	"log"
@@ -11,6 +12,10 @@ import (
 	pb "github.com/balta2ar/carrybasket/rpc"
 	"google.golang.org/grpc"
 )
+
+type SyncServiceClient interface {
+	SyncCycle() error
+}
 
 //
 // Server
@@ -277,6 +282,7 @@ func (c *syncServiceClient) Close() error {
 }
 
 func (c *syncServiceClient) PullHashedFiles() error {
+	c.Reset()
 
 	pullStream, err := c.client.PullHashedFiles(context.Background(), &pb.ProtoEmpty{})
 
@@ -417,5 +423,23 @@ func (c *syncServiceClient) PushAdjustmentCommands() error {
 	}
 	log.Printf("reply: %v\n", reply)
 
+	return nil
+}
+
+func (c *syncServiceClient) SyncCycle() error {
+	log.Println("sync cycle: pulling...")
+	err := c.PullHashedFiles()
+	if err != nil {
+		return errors.Wrap(err, "sync cycle: pull error: %v")
+	}
+	log.Println("sync cycle: pull done")
+
+	log.Println("sync cycle: pushing...")
+	err = c.PushAdjustmentCommands()
+	if err != nil {
+		return errors.Wrap(err, "sync cycle: push error: %v")
+	}
+
+	log.Println("sync cycle: push done")
 	return nil
 }
