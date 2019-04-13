@@ -47,41 +47,6 @@ func NewSyncServiceServer(
 	}
 }
 
-func (hf *HashedFile) asProtoHashedFile() pb.ProtoHashedFile {
-	protoHashedFile := pb.ProtoHashedFile{
-		Filename:     hf.Filename,
-		IsDir:        hf.IsDir,
-		FastHashes:   []*pb.ProtoBlock{},
-		StrongHashes: []*pb.ProtoBlock{},
-	}
-
-	for _, abstractBlock := range hf.FastHashes {
-		block := abstractBlock.(HashedBlock)
-		protoHashedFile.FastHashes = append(
-			protoHashedFile.FastHashes,
-			&pb.ProtoBlock{
-				Type:    pb.ProtoBlockType_HASHED,
-				Offset:  block.Offset(),
-				Size:    block.Size(),
-				Hashsum: block.HashSum(),
-				Content: []byte{},
-			})
-	}
-	for _, abstractBlock := range hf.StrongHashes {
-		block := abstractBlock.(HashedBlock)
-		protoHashedFile.StrongHashes = append(
-			protoHashedFile.StrongHashes,
-			&pb.ProtoBlock{
-				Type:    pb.ProtoBlockType_HASHED,
-				Offset:  block.Offset(),
-				Size:    block.Size(),
-				Hashsum: block.HashSum(),
-				Content: []byte{},
-			})
-	}
-	return protoHashedFile
-}
-
 func (s *syncServiceServer) PullHashedFiles(
 	empty *pb.ProtoEmpty,
 	stream pb.SyncService_PullHashedFilesServer,
@@ -141,50 +106,7 @@ func (s *syncServiceServer) PushAdjustmentCommands(
 			protoCommand.Filename,
 		)
 
-		var command AdjustmentCommand
-		switch protoCommand.Type {
-		case pb.ProtoAdjustmentCommandType_REMOVE_FILE:
-			command = AdjustmentCommandRemoveFile{
-				protoCommand.Filename,
-			}
-
-		case pb.ProtoAdjustmentCommandType_MK_DIR:
-			command = AdjustmentCommandMkDir{
-				protoCommand.Filename,
-			}
-
-		case pb.ProtoAdjustmentCommandType_APPLY_BLOCKS_TO_FILE:
-			blocks := make([]Block, 0, len(protoCommand.Blocks))
-			for _, protoBlock := range protoCommand.Blocks {
-				switch protoBlock.Type {
-				case pb.ProtoBlockType_HASHED:
-					blocks = append(
-						blocks,
-						NewHashedBlock(
-							protoBlock.Offset,
-							protoBlock.Size,
-							protoBlock.Hashsum,
-						),
-					)
-
-				case pb.ProtoBlockType_CONTENT:
-					blocks = append(
-						blocks,
-						NewContentBlock(
-							protoBlock.Offset,
-							protoBlock.Size,
-							protoBlock.Content,
-						),
-					)
-				}
-			}
-
-			command = AdjustmentCommandApplyBlocksToFile{
-				protoCommand.Filename,
-				blocks,
-			}
-		}
-
+		command := protoAdjustmentCommandasAdjustmentCommand(protoCommand)
 		commands = append(commands, command)
 	}
 
@@ -304,32 +226,7 @@ func (c *syncServiceClient) PullHashedFiles() error {
 			protoHashedFile.Filename,
 		)
 
-		hashedFile := HashedFile{
-			Filename:     protoHashedFile.Filename,
-			IsDir:        protoHashedFile.IsDir,
-			FastHashes:   []Block{},
-			StrongHashes: []Block{},
-		}
-		for _, fastHashedBlock := range protoHashedFile.FastHashes {
-			hashedFile.FastHashes = append(
-				hashedFile.FastHashes,
-				NewHashedBlock(
-					fastHashedBlock.Offset,
-					fastHashedBlock.Size,
-					fastHashedBlock.Hashsum,
-				),
-			)
-		}
-		for _, strongHashedBlock := range protoHashedFile.StrongHashes {
-			hashedFile.StrongHashes = append(
-				hashedFile.StrongHashes,
-				NewHashedBlock(
-					strongHashedBlock.Offset,
-					strongHashedBlock.Size,
-					strongHashedBlock.Hashsum,
-				),
-			)
-		}
+		hashedFile := protoHashedFileAsHashedFile(protoHashedFile)
 		c.serverHashedFiles = append(c.serverHashedFiles, hashedFile)
 	}
 	return nil
@@ -354,59 +251,8 @@ func (c *syncServiceClient) PushAdjustmentCommands() error {
 
 	log.Println("pushing commands...")
 	for _, abstractCommand := range commands {
-		var protoCommand pb.ProtoAdjustmentCommand
 
-		switch command := abstractCommand.(type) {
-		case AdjustmentCommandApplyBlocksToFile:
-			protoCommand = pb.ProtoAdjustmentCommand{
-				Type:     pb.ProtoAdjustmentCommandType_APPLY_BLOCKS_TO_FILE,
-				Filename: command.filename,
-				Blocks:   []*pb.ProtoBlock{},
-			}
-
-			for _, abstractBlock := range command.blocks {
-				switch block := abstractBlock.(type) {
-				case ContentBlock:
-					protoCommand.Blocks = append(
-						protoCommand.Blocks,
-						&pb.ProtoBlock{
-							Type:    pb.ProtoBlockType_CONTENT,
-							Offset:  block.Offset(),
-							Size:    block.Size(),
-							Hashsum: []byte{},
-							Content: block.Content(),
-						},
-					)
-
-				case HashedBlock:
-					protoCommand.Blocks = append(
-						protoCommand.Blocks,
-						&pb.ProtoBlock{
-							Type:    pb.ProtoBlockType_HASHED,
-							Offset:  block.Offset(),
-							Size:    block.Size(),
-							Hashsum: block.HashSum(),
-							Content: []byte{},
-						},
-					)
-				}
-			}
-
-		case AdjustmentCommandRemoveFile:
-			protoCommand = pb.ProtoAdjustmentCommand{
-				Type:     pb.ProtoAdjustmentCommandType_REMOVE_FILE,
-				Filename: command.filename,
-				Blocks:   []*pb.ProtoBlock{},
-			}
-
-		case AdjustmentCommandMkDir:
-			protoCommand = pb.ProtoAdjustmentCommand{
-				Type:     pb.ProtoAdjustmentCommandType_MK_DIR,
-				Filename: command.filename,
-				Blocks:   []*pb.ProtoBlock{},
-			}
-		}
-
+		protoCommand := adjustmentCommandAsProtoAdjustmentCommand(abstractCommand)
 		err = pushStream.Send(&protoCommand)
 		if err == io.EOF {
 			log.Printf("push EOF")
