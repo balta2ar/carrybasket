@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 )
 
 type filesystemSandbox struct {
@@ -186,10 +187,9 @@ func TestSync_ActualFilesystem(t *testing.T) {
 		clientFiles,
 		serverFiles,
 	)
-
 }
 
-func TestSync_Watcher(t *testing.T) {
+func TestSync_ChangeHandler(t *testing.T) {
 	blockSize := 4
 	clientFiles := []File{
 		{"a", true, ""},
@@ -219,26 +219,97 @@ func TestSync_Watcher(t *testing.T) {
 	client.SyncCycle()
 	assertFilesystemsEqual(t, clientFs, serverFs)
 
-	watcher := NewWatcherSyncServiceClient(client)
+	changeHandler := NewChangeHandler(client)
 	events := make(chan ChangeEvent, 0)
-	syncDone := make(chan struct{}, 0)
-	watcher.Watch(events, syncDone)
+	syncCycleDone := make(chan struct{}, 0)
+	changeHandler.Watch(events, syncCycleDone)
 
 	clientFs.Mkdir("b")
 	events <- ChangeEvent{}
-	<-syncDone
+	<-syncCycleDone
 	assertFilesystemsEqual(t, clientFs, serverFs)
 
 	clientFs.Delete("a")
 	events <- ChangeEvent{}
-	<-syncDone
+	<-syncCycleDone
 	assertFilesystemsEqual(t, clientFs, serverFs)
 
 	w, err := clientFs.OpenWrite("c")
 	assert.Nil(t, err)
 	w.Write([]byte("ccc"))
 	events <- ChangeEvent{}
-	<-syncDone
+	<-syncCycleDone
+	assertFilesystemsEqual(t, clientFs, serverFs)
+
+	runner.Stop()
+}
+
+func TestSync_ActualFilesystem_Watcher(t *testing.T) {
+	sandbox := NewFilesystemSandbox("sandbox")
+	defer sandbox.Cleanup()
+
+	blockSize := 4
+	clientFiles := []File{
+		{"a", true, ""},
+		{"a/1", false, "1"},
+		{"a/2", false, "2"},
+		{"a/3", false, "3"},
+	}
+	serverFiles := []File{
+		{"z", false, "z"},
+	}
+
+	address := "localhost:20000"
+	serverDir := "server"
+	clientDir := "client"
+
+	serverFs := NewActualFilesystem(serverDir)
+	clientFs := NewActualFilesystem(clientDir)
+
+	createFiles(serverFs, serverFiles)
+	createFiles(clientFs, clientFiles)
+
+	server := NewSyncServiceServer(blockSize, serverDir, serverFs, address)
+	client := NewSyncServiceClient(blockSize, clientDir, clientFs, address)
+	runner := NewClientServerRunner(client, server)
+	runner.StartServer()
+	runner.DialClient()
+
+	client.SyncCycle()
+	assertFilesystemsEqual(t, clientFs, serverFs)
+
+	changeHandler := NewChangeHandler(client)
+	fileWatcher := NewActualFileEventWatcher(clientDir)
+	events := make(chan ChangeEvent, 0)
+	syncCycleDone := make(chan struct{}, 0)
+
+	go func() {
+		changeHandler.Watch(events, syncCycleDone)
+		fileWatcher.Watch(events, time.Millisecond*50)
+	}()
+	fileWatcher.Wait() // wait until file watcher has stared
+
+	clientFs.Mkdir("b")
+	w, err := clientFs.OpenWrite("b/1")
+	assert.Nil(t, err)
+	w.Write([]byte("abc"))
+	w.(*os.File).Close()
+	<-syncCycleDone
+	assertFilesystemsEqual(t, clientFs, serverFs)
+
+	w, err = clientFs.OpenWrite("a/1")
+	assert.Nil(t, err)
+	w.Write([]byte("xyz"))
+	w.(*os.File).Close()
+	<-syncCycleDone
+	assertFilesystemsEqual(t, clientFs, serverFs)
+
+	clientFs.Move("a/1", "b/100")
+	<-syncCycleDone
+	assertFilesystemsEqual(t, clientFs, serverFs)
+
+	clientFs.Delete("b/100")
+	<-syncCycleDone
 	assertFilesystemsEqual(t, clientFs, serverFs)
 
 	runner.Stop()

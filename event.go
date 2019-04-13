@@ -3,6 +3,8 @@ package carrybasket
 import (
 	"fmt"
 	"github.com/radovskyb/watcher"
+	"log"
+	"time"
 )
 
 type ChangeEvent struct {
@@ -20,7 +22,10 @@ func NewActualFileEventWatcher(rootDir string) *actualFileEventWatcher {
 	}
 }
 
-func (ew *actualFileEventWatcher) Watch(eventSink chan<- ChangeEvent) {
+func (ew *actualFileEventWatcher) Watch(
+	eventSink chan<- ChangeEvent,
+	duration time.Duration,
+) {
 	ew.watcher.SetMaxEvents(1)
 	ew.watcher.FilterOps(
 		watcher.Create,
@@ -28,36 +33,63 @@ func (ew *actualFileEventWatcher) Watch(eventSink chan<- ChangeEvent) {
 		watcher.Rename,
 		watcher.Write,
 	)
+
+	go func() {
+		for {
+			select {
+			case event := <-ew.watcher.Event:
+				log.Printf("event: %v\n", event)
+				eventSink <- struct{}{}
+				log.Println("event has been sent")
+			case err := <-ew.watcher.Error:
+				log.Printf("error: %v\n", err)
+			case <-ew.watcher.Closed:
+				log.Printf("closed")
+				return
+			}
+		}
+	}()
+
+	if err := ew.watcher.AddRecursive(ew.rootDir); err != nil {
+		log.Fatalf("error adding watch dir: %v\n", err)
+	}
+
+	if err := ew.watcher.Start(duration); err != nil {
+		log.Fatalf("error starting watcher: %v\n", err)
+	}
+}
+
+func (ew *actualFileEventWatcher) Wait() {
+	ew.watcher.Wait()
 }
 
 type WatcherSyncServiceClient interface {
 	Watch(eventSource <-chan ChangeEvent)
 }
 
-type watcherSyncServiceClient struct {
+type changeHandler struct {
 	syncClient SyncServiceClient
 }
 
-func NewWatcherSyncServiceClient(syncClient SyncServiceClient) *watcherSyncServiceClient {
-	return &watcherSyncServiceClient{
+func NewChangeHandler(syncClient SyncServiceClient) *changeHandler {
+	return &changeHandler{
 		syncClient: syncClient,
 	}
 }
 
-func (c *watcherSyncServiceClient) Watch(
+func (c *changeHandler) Watch(
 	eventSource <-chan ChangeEvent,
-	syncDone chan<- struct{},
+	syncCycleDone chan<- struct{},
 ) {
-	//return
 	go func() {
 		for {
 			select {
 			case <-eventSource:
 				if err := c.syncClient.SyncCycle(); err != nil {
-					close(syncDone)
+					close(syncCycleDone)
 					panic(fmt.Sprintf("watcher: sync cycle error: %v\n", err))
 				}
-				syncDone <- struct{}{}
+				syncCycleDone <- struct{}{}
 			}
 		}
 	}()

@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -6,6 +5,7 @@ import (
 	"github.com/urfave/cli"
 	"log"
 	"os"
+	"time"
 )
 
 func action(c *cli.Context) error {
@@ -33,11 +33,27 @@ func action(c *cli.Context) error {
 	}
 	defer client.Close()
 
-	// put code below in a loop
+	// one-time sync in the beginning
 	if err := client.SyncCycle(); err != nil {
 		log.Fatalf("client sync error: %v\n", err)
 	}
-	// end of loop
+
+	changeHandler := carrybasket.NewChangeHandler(client)
+	fileWatcher := carrybasket.NewActualFileEventWatcher(".")
+	events := make(chan carrybasket.ChangeEvent, 0)
+	syncCycleDone := make(chan struct{}, 0)
+
+	go func() {
+		for {
+			select {
+			case <-syncCycleDone:
+				log.Println("main routine: sync cycle done")
+			}
+		}
+	}()
+
+	changeHandler.Watch(events, syncCycleDone)
+	fileWatcher.Watch(events, time.Second*1)
 
 	return nil
 }
