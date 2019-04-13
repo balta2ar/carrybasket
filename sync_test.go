@@ -96,7 +96,7 @@ func (csr *clientServerRunner) StartServer() {
 
 func (csr *clientServerRunner) DialClient() {
 	if err := csr.client.Dial(); err != nil {
-		panic(fmt.Sprintf( "client dial error: %v\n", err))
+		panic(fmt.Sprintf("client dial error: %v\n", err))
 	}
 }
 

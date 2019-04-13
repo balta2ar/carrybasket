@@ -87,8 +87,7 @@ func TestFilesComparator_RemoveOneOfTwoAndChange(t *testing.T) {
 
 func TestFilesComparator_RemoveOnlyOne(t *testing.T) {
 	blockSize := 4
-	clientFiles := []VirtualFile{
-	}
+	clientFiles := []VirtualFile{}
 	serverHashedFiles := []HashedFile{
 		{"a", false, nil, nil},
 	}
@@ -116,8 +115,7 @@ func TestFilesComparator_AddOneToEmpty(t *testing.T) {
 	clientFiles := []VirtualFile{
 		{"a", false, strings.NewReader("abc")},
 	}
-	serverHashedFiles := []HashedFile{
-	}
+	serverHashedFiles := []HashedFile{}
 	commands := runComparator(blockSize, clientFiles, serverHashedFiles)
 	assert.Len(t, commands, 1)
 	assert.Equal(t, "a", commands[0].(AdjustmentCommandApplyBlocksToFile).filename)
@@ -170,8 +168,7 @@ func TestFilesComparator_MkOneNewDir(t *testing.T) {
 	clientFiles := []VirtualFile{
 		makeClientFile("a", true, ""),
 	}
-	serverHashedFiles := []HashedFile{
-	}
+	serverHashedFiles := []HashedFile{}
 	commands := runComparator(blockSize, clientFiles, serverHashedFiles)
 	assert.Len(t, commands, 1)
 	assert.Equal(t, "a", commands[0].(AdjustmentCommandMkDir).filename)
@@ -179,8 +176,7 @@ func TestFilesComparator_MkOneNewDir(t *testing.T) {
 
 func TestFilesComparator_RmOneDir(t *testing.T) {
 	blockSize := 4
-	clientFiles := []VirtualFile{
-	}
+	clientFiles := []VirtualFile{}
 	serverHashedFiles := []HashedFile{
 		makeServerFile(blockSize, "a", true, ""),
 	}
@@ -294,8 +290,7 @@ func TestAdjustmentCommandApplier_AddOneDir(t *testing.T) {
 	clientFiles := []VirtualFile{
 		makeClientFile("a", true, ""),
 	}
-	serverHashedFiles := []HashedFile{
-	}
+	serverHashedFiles := []HashedFile{}
 	commands := runComparator(blockSize, clientFiles, serverHashedFiles)
 
 	contentCache := NewBlockCache()
@@ -314,8 +309,7 @@ func TestAdjustmentCommandApplier_AddOneDir(t *testing.T) {
 
 func TestAdjustmentCommandApplier_RmOneDir(t *testing.T) {
 	blockSize := 4
-	clientFiles := []VirtualFile{
-	}
+	clientFiles := []VirtualFile{}
 	serverHashedFiles := []HashedFile{
 		makeServerFile(blockSize, "b", true, ""),
 	}

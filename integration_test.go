@@ -173,8 +173,7 @@ func TestIntegration_ContentEquality(t *testing.T) {
 }
 
 func TestIntegration_SyncClientServerOfflineEmpty(t *testing.T) {
-	clientFiles := []File{
-	}
+	clientFiles := []File{}
 	serverFiles := []File{
 		{"b", false, "1234"},
 	}

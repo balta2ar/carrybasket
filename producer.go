@@ -22,9 +22,9 @@ type blockProducer struct {
 	fastHashCache   BlockCache
 	strongHashCache BlockCache
 
-	offset      int    // current reading offset
-	cutoff      int    // can't rewind backwards earlier than this cut-off offset
-	content     []byte // accumulated content so far that has not been emitted
+	offset  int    // current reading offset
+	cutoff  int    // can't rewind backwards earlier than this cut-off offset
+	content []byte // accumulated content so far that has not been emitted
 }
 
 func NewBlockProducer(
@@ -41,9 +41,9 @@ func NewBlockProducer(
 		fastHashCache:   fastHashCache,
 		strongHashCache: strongHashCache,
 
-		offset:      0,
-		cutoff:      0,
-		content:     nil,
+		offset:  0,
+		cutoff:  0,
+		content: nil,
 	}
 	producer.Reset()
 	return producer
@@ -93,7 +93,7 @@ func (bp *blockProducer) emitContent(blocks []Block, offset int, content []byte)
 // its strong hash is sent.
 func (bp *blockProducer) updateBothCachesWithContent(contentBlock ContentBlock) {
 	bp.fastHasher.Reset()
-	_,_ = bp.fastHasher.Write(contentBlock.Content())
+	_, _ = bp.fastHasher.Write(contentBlock.Content())
 	fastHash := bp.fastHasher.Sum(nil)
 
 	bp.strongHasher.Reset()
@@ -183,7 +183,7 @@ func (bp *blockProducer) Scan(r io.Reader) []Block {
 }
 
 // Try reading n bytes from reader r
-func (bp *blockProducer) advance(r io.Reader, n int) (error) {
+func (bp *blockProducer) advance(r io.Reader, n int) error {
 	buffer := make([]byte, n)
 	n, err := r.Read(buffer)
 	if err != nil {

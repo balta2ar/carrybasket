@@ -91,8 +91,7 @@ type hashGeneratorFactory struct {
 }
 
 func NewHashGeneratorFactory() *hashGeneratorFactory {
-	return &hashGeneratorFactory{
-	}
+	return &hashGeneratorFactory{}
 }
 
 func (hgf *hashGeneratorFactory) MakeHashGenerator() HashGenerator {

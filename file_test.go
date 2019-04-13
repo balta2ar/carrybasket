@@ -236,9 +236,9 @@ func TestListServerFiles_FilesAndDirs(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Len(t, files, 5)
 
-	expectedCases := []struct{
-		Filename string
-		IsDir bool
+	expectedCases := []struct {
+		Filename  string
+		IsDir     bool
 		NumHashes int
 	}{
 		{"a", true, 0},

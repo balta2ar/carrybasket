@@ -19,4 +19,3 @@ func TestSmoke(t *testing.T) {
 	//assert.NotEqual(t, c2, c3, "c2 == c3")
 	//assert.NotEqual(t, c1, c3, "c1 == c3")
 }
-

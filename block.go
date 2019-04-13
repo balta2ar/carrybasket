@@ -37,7 +37,7 @@ type contentBlock struct {
 func (cb *contentBlock) Content() []byte { return cb.content }
 func NewContentBlock(offset uint64, size uint64, content []byte) *contentBlock {
 	return &contentBlock{
-		block:   block{offset, size,},
+		block:   block{offset, size},
 		content: append(content[:0:0], content...),
 	}
 }
@@ -50,7 +50,7 @@ type hashedBlock struct {
 func (hb *hashedBlock) HashSum() []byte { return hb.hashSum }
 func NewHashedBlock(offset uint64, size uint64, hashSum []byte) *hashedBlock {
 	return &hashedBlock{
-		block:   block{offset, size,},
+		block:   block{offset, size},
 		hashSum: append(hashSum[:0:0], hashSum...),
 	}
 }
