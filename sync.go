@@ -2,9 +2,7 @@ package carrybasket
 
 import (
 	"context"
-	"crypto/md5"
 	"github.com/pkg/errors"
-	"hash"
 	"io"
 	"log"
 	"net"
@@ -105,13 +103,11 @@ func (s *syncServiceServer) PushAdjustmentCommands(
 			protoCommand.Filename,
 		)
 
-		command := protoAdjustmentCommandasAdjustmentCommand(protoCommand)
+		command := protoAdjustmentCommandAsAdjustmentCommand(protoCommand)
 		commands = append(commands, command)
 	}
 
-	makeStrongHash := func() hash.Hash { return md5.New() }
-	strongHasher := makeStrongHash()
-
+	strongHasher := s.hashFactory.MakeStrongHash()
 	reconstructor := NewContentReconstructor(strongHasher, s.contentCache)
 	applier := NewAdjustmentCommandApplier()
 	err := applier.Apply(commands, s.fs, reconstructor)
@@ -211,7 +207,8 @@ func (c *syncServiceClient) PullHashedFiles() error {
 	pullStream, err := c.client.PullHashedFiles(context.Background(), &pb.ProtoEmpty{})
 
 	if err != nil {
-		log.Fatalf("error receiving pullStream: %v\n", err)
+		log.Printf("error receiving pullStream: %v\n", err)
+		return err
 	}
 
 	for {
@@ -245,7 +242,8 @@ func (c *syncServiceClient) PushAdjustmentCommands() error {
 
 	pushStream, err := c.client.PushAdjustmentCommands(context.Background())
 	if err != nil {
-		log.Fatalf("push error: %v\n", err)
+		log.Printf("push error: %v\n", err)
+		return err
 	}
 
 	log.Println("pushing commands...")
@@ -264,7 +262,7 @@ func (c *syncServiceClient) PushAdjustmentCommands() error {
 	reply, err := pushStream.CloseAndRecv()
 	if err != nil {
 		log.Printf("error closing: %v\n", err)
-		return nil
+		return err
 	}
 	log.Printf("reply: %v\n", reply)
 

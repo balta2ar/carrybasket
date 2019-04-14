@@ -1,6 +1,7 @@
 package carrybasket
 
 import (
+	"fmt"
 	"hash"
 	"io"
 )
@@ -22,9 +23,11 @@ type blockProducer struct {
 	fastHashCache   BlockCache
 	strongHashCache BlockCache
 
-	offset  int    // current reading offset
-	cutoff  int    // can't rewind backwards earlier than this cut-off offset
-	content []byte // accumulated content so far that has not been emitted
+	offset      int    // current reading offset
+	cutoff      int    // can't rewind backwards earlier than this cut-off offset
+	content     []byte // accumulated content so far that has not been emitted
+	contentSize int
+	buffer      []byte
 }
 
 func NewBlockProducer(
@@ -41,9 +44,11 @@ func NewBlockProducer(
 		fastHashCache:   fastHashCache,
 		strongHashCache: strongHashCache,
 
-		offset:  0,
-		cutoff:  0,
-		content: nil,
+		offset:      0,
+		cutoff:      0,
+		content:     nil,
+		contentSize: 0,
+		buffer:      nil,
 	}
 	producer.Reset()
 	return producer
@@ -52,7 +57,9 @@ func NewBlockProducer(
 func (bp *blockProducer) Reset() {
 	bp.offset = 0
 	bp.cutoff = 0
-	bp.content = make([]byte, 0)
+	bp.content = make([]byte, bp.blockSize)
+	bp.contentSize = 0
+	bp.buffer = make([]byte, 1)
 }
 
 // Calculate how far back we can go from the current position. This is
@@ -73,9 +80,9 @@ func (bp *blockProducer) windowSizeBackward() int {
 }
 
 func (bp *blockProducer) tryEmitContent(blocks []Block) []Block {
-	if len(bp.content) > 0 {
-		blocks = bp.emitContent(blocks, bp.offset-len(bp.content), bp.content)
-		bp.content = make([]byte, 0)
+	if bp.contentSize > 0 {
+		blocks = bp.emitContent(blocks, bp.offset-bp.contentSize, bp.content[0:bp.contentSize])
+		bp.contentSize = 0
 	}
 	return blocks
 }
@@ -114,16 +121,16 @@ func (bp *blockProducer) tryEmitHash(blocks []Block, r io.Reader) ([]Block, bool
 		// hashed block which we haven't emitted yet. We can check current
 		// content size whether it's bigger than our backward lookup
 		// window.
-		partialContentSize := len(bp.content) - bp.windowSizeBackward()
+		partialContentSize := bp.contentSize - bp.windowSizeBackward()
 		if partialContentSize > 0 {
 			partialContent := bp.content[0:partialContentSize]
-			blocks = bp.emitContent(blocks, bp.offset-len(bp.content), partialContent)
+			blocks = bp.emitContent(blocks, bp.offset-bp.contentSize, partialContent)
 		}
 
 		blocks = bp.emitHash(blocks, cachedBlock.(HashedBlock))
 		// hash has been emitted, we need to clear current content and hashes
 		bp.cutoff = bp.offset
-		bp.content = make([]byte, 0)
+		bp.contentSize = 0
 		bp.fastHasher.Reset()
 		bp.strongHasher.Reset()
 
@@ -145,7 +152,7 @@ func (bp *blockProducer) emitHash(blocks []Block, hashedBlock HashedBlock) []Blo
 // beginning and in the end of the input.
 func (bp *blockProducer) readCurrentWindow(r io.Reader) []byte {
 	bytesToRewind := bp.windowSizeBackward()
-	return bp.content[len(bp.content)-bytesToRewind:]
+	return bp.content[bp.contentSize-bytesToRewind:bp.contentSize]
 }
 
 // Check whether fast & strong hashes of the current window
@@ -172,7 +179,7 @@ func (bp *blockProducer) Scan(r io.Reader) []Block {
 	blocks := make([]Block, 0)
 	for {
 		blocks, _ = bp.tryEmitHash(blocks, r)
-		if err := bp.advance(r, 1); err != nil {
+		if err := bp.advance(r); err != nil {
 			break
 		}
 	}
@@ -182,16 +189,26 @@ func (bp *blockProducer) Scan(r io.Reader) []Block {
 	return blocks
 }
 
-// Try reading n bytes from reader r
-func (bp *blockProducer) advance(r io.Reader, n int) error {
-	buffer := make([]byte, n)
-	n, err := r.Read(buffer)
+// Try reading 1 byte from reader r
+func (bp *blockProducer) advance(r io.Reader) error {
+
+	n, err := r.Read(bp.buffer)
 	if err != nil {
 		return err
 	}
-	_, _ = bp.fastHasher.Write(buffer)
+	if n != 1 {
+		panic(fmt.Sprintf("unexpected number of bytes read: %v\n", n))
+	}
+	_, _ = bp.fastHasher.Write(bp.buffer)
 	bp.offset += n
-	bp.content = append(bp.content, buffer...)
+	if bp.contentSize+1 == cap(bp.content) {
+		newContent := make([]byte, 2*cap(bp.content))
+		copy(newContent, bp.content[0:bp.contentSize])
+		bp.content = newContent
+	}
+	bp.content[bp.contentSize] = bp.buffer[0]
+	bp.contentSize++
+
 
 	return nil
 }

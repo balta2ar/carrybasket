@@ -26,7 +26,8 @@ func action(c *cli.Context) error {
 		blockSize, targetDir, address, os.Getpid(),
 	)
 	os.Chdir(targetDir)
-	server := carrybasket.NewSyncServiceServer(blockSize, targetDir, fs, address)
+	hashFactory := carrybasket.NewHashFactory(blockSize)
+	server := carrybasket.NewSyncServiceServer(blockSize, targetDir, fs, address, hashFactory)
 	err := server.Serve()
 	if err != nil {
 		log.Fatalf("server serve error: %v\n", err)

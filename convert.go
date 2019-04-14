@@ -91,7 +91,7 @@ func protoHashedFileAsHashedFile(protoHashedFile *pb.ProtoHashedFile) HashedFile
 	return hashedFile
 }
 
-func protoAdjustmentCommandasAdjustmentCommand(protoCommand *pb.ProtoAdjustmentCommand) AdjustmentCommand {
+func protoAdjustmentCommandAsAdjustmentCommand(protoCommand *pb.ProtoAdjustmentCommand) AdjustmentCommand {
 	var command AdjustmentCommand
 	switch protoCommand.Type {
 	case pb.ProtoAdjustmentCommandType_REMOVE_FILE:

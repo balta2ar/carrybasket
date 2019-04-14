@@ -35,6 +35,20 @@ func TestBlockProducer_Smoke(t *testing.T) {
 	assert.Empty(t, result)
 }
 
+func BenchmarkBlockProducer_Huge(b *testing.B) {
+	blockSize := 64 * 1024
+	fastHash := NewMackerras(blockSize)
+	strongHash := md5.New()
+	fastCache := NewBlockCache()
+	strongCache := NewBlockCache()
+	producer := NewBlockProducer(blockSize, fastHash, strongHash, fastCache, strongCache)
+
+	r1 := strings.NewReader(strings.Repeat("a", 100 * 1024 * 1024))
+	b.ResetTimer()
+	result := producer.Scan(r1)
+	assert.NotEmpty(b, result)
+}
+
 func TestBlockProducer_EmitOneByteOfContent(t *testing.T) {
 	producer := makeEmptyBlockProducer(1)
 	r := strings.NewReader("a")

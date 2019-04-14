@@ -26,7 +26,8 @@ func action(c *cli.Context) error {
 		blockSize, targetDir, address, os.Getpid(),
 	)
 	os.Chdir(targetDir)
-	client := carrybasket.NewSyncServiceClient(blockSize, targetDir, fs, address)
+	hashFactory := carrybasket.NewHashFactory(blockSize)
+	client := carrybasket.NewSyncServiceClient(blockSize, targetDir, fs, address, hashFactory)
 	err := client.Dial()
 	if err != nil {
 		log.Fatalf("dial error: %v\n", err)
