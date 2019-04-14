@@ -16,6 +16,7 @@ type digest struct {
 	digest    uint32 // the hash value itself
 	circle    []byte // circular buffer to keep values of our rolling window
 	index     int    // current position in the circular buffer
+	sum       []byte // slice that is returned on Sum call (for optimization)
 }
 
 /// Reset checksum state to initial
@@ -23,6 +24,7 @@ func (d *digest) Reset() {
 	d.digest = Init
 	d.circle = make([]byte, d.blockSize)
 	d.index = 0
+	d.sum = make([]byte, Size)
 }
 
 /// Rolling checksum taken from rsync thesis, inspired by Adler-32.
@@ -35,6 +37,7 @@ func NewMackerras(blockSize int) hash.Hash32 {
 		digest:    Init,
 		circle:    make([]byte, blockSize),
 		index:     0,
+		sum:       make([]byte, Size),
 	}
 	return d
 }
@@ -59,6 +62,12 @@ func update(d *digest, p []byte) {
 	}
 
 	d.digest = (r1 & 0xffff) | (r2 << 16)
+
+	s := uint32(d.digest)
+	d.sum[0] = byte(s>>24)
+	d.sum[1] = byte(s>>16)
+	d.sum[2] = byte(s>>8)
+	d.sum[3] = byte(s)
 }
 
 /// Perform rolling update
@@ -71,8 +80,7 @@ func (d *digest) Write(p []byte) (nn int, err error) {
 func (d *digest) Sum32() uint32 { return uint32(d.digest) }
 
 func (d *digest) Sum(in []byte) []byte {
-	s := uint32(d.digest)
-	return append(in, byte(s>>24), byte(s>>16), byte(s>>8), byte(s))
+	return d.sum
 }
 
 type HashFactory interface {
