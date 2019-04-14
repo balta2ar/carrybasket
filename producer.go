@@ -208,20 +208,17 @@ type MakeFastHash func() hash.Hash32
 type MakeStrongHash func() hash.Hash
 
 type producerFactory struct {
-	blockSize      int
-	makeFastHash   MakeFastHash
-	makeStrongHash MakeStrongHash
+	blockSize   int
+	hashFactory HashFactory
 }
 
 func NewProducerFactory(
 	blockSize int,
-	makeFastHash MakeFastHash,
-	makeStrongHash MakeStrongHash,
+	hashFactory HashFactory,
 ) *producerFactory {
 	return &producerFactory{
-		blockSize:      blockSize,
-		makeFastHash:   makeFastHash,
-		makeStrongHash: makeStrongHash,
+		blockSize:   blockSize,
+		hashFactory: hashFactory,
 	}
 }
 
@@ -241,8 +238,11 @@ func (pf *producerFactory) MakeProducer(fastHashBlocks []Block, strongHashBlocks
 }
 
 func (pf *producerFactory) MakeProducerWithCache(fastCache BlockCache, strongCache BlockCache) BlockProducer {
-	fastHash := pf.makeFastHash()
-	strongHash := pf.makeStrongHash()
-
-	return NewBlockProducer(pf.blockSize, fastHash, strongHash, fastCache, strongCache)
+	return NewBlockProducer(
+		pf.blockSize,
+		pf.hashFactory.MakeFastHash(),
+		pf.hashFactory.MakeStrongHash(),
+		fastCache,
+		strongCache,
+	)
 }

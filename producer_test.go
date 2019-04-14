@@ -347,22 +347,16 @@ func TestBlockProducer_MultipleTestCases(t *testing.T) {
 
 func TestProducerFactory_Smoke(t *testing.T) {
 	blockSize := 4
-	factory := NewProducerFactory(
-		blockSize,
-		func() hash.Hash32 { return NewMackerras(blockSize) },
-		func() hash.Hash { return md5.New() },
-	)
+	hashFactory := NewHashFactory(blockSize)
+	factory := NewProducerFactory(blockSize, hashFactory)
 	producer := factory.MakeProducer(nil, nil)
 	assert.NotNil(t, producer)
 }
 
 func TestProducerFactory_WithoutCaches(t *testing.T) {
 	blockSize := 4
-	factory := NewProducerFactory(
-		blockSize,
-		func() hash.Hash32 { return NewMackerras(blockSize) },
-		func() hash.Hash { return md5.New() },
-	)
+	hashFactory := NewHashFactory(blockSize)
+	factory := NewProducerFactory(blockSize, hashFactory)
 	producer := factory.MakeProducer(nil, nil)
 	assert.NotNil(t, producer)
 
@@ -385,11 +379,8 @@ func TestProducerFactory_WithCaches(t *testing.T) {
 	strongHash.Write([]byte("abcd"))
 	strongChecksum := strongHash.Sum(nil)
 
-	factory := NewProducerFactory(
-		blockSize,
-		func() hash.Hash32 { return NewMackerras(blockSize) },
-		func() hash.Hash { return md5.New() },
-	)
+	hashFactory := NewHashFactory(blockSize)
+	factory := NewProducerFactory(blockSize, hashFactory)
 	producer := factory.MakeProducer(
 		[]Block{NewHashedBlock(0, 4, fastChecksum)},
 		[]Block{NewHashedBlock(0, 4, strongChecksum)},

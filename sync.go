@@ -22,10 +22,11 @@ type SyncServiceClient interface {
 //
 
 type syncServiceServer struct {
-	blockSize int
-	targetDir string
-	fs        VirtualFilesystem
-	address   string
+	blockSize   int
+	targetDir   string
+	fs          VirtualFilesystem
+	address     string
+	hashFactory HashFactory
 
 	contentCache BlockCache
 	rpcServer    *grpc.Server
@@ -36,12 +37,14 @@ func NewSyncServiceServer(
 	targetDir string,
 	fs VirtualFilesystem,
 	address string,
+	hashFactory HashFactory,
 ) *syncServiceServer {
 	return &syncServiceServer{
-		blockSize: blockSize,
-		targetDir: targetDir,
-		fs:        fs,
-		address:   address,
+		blockSize:   blockSize,
+		targetDir:   targetDir,
+		fs:          fs,
+		address:     address,
+		hashFactory: hashFactory,
 
 		contentCache: NewBlockCache(),
 	}
@@ -51,12 +54,8 @@ func (s *syncServiceServer) PullHashedFiles(
 	empty *pb.ProtoEmpty,
 	stream pb.SyncService_PullHashedFilesServer,
 ) error {
-
-	makeFastHash := func() hash.Hash32 { return NewMackerras(s.blockSize) }
-	makeStrongHash := func() hash.Hash { return md5.New() }
-
-	fastHasher := makeFastHash()
-	strongHasher := makeStrongHash()
+	fastHasher := s.hashFactory.MakeFastHash()
+	strongHasher := s.hashFactory.MakeStrongHash()
 	generator := NewHashGenerator(s.blockSize, fastHasher, strongHasher)
 
 	listedServerFiles, err := ListServerFiles(s.fs, generator, s.contentCache)
@@ -162,6 +161,7 @@ type syncServiceClient struct {
 	connection *grpc.ClientConn
 	client     pb.SyncServiceClient
 
+	hashFactory       HashFactory
 	serverHashedFiles []HashedFile
 }
 
@@ -170,12 +170,14 @@ func NewSyncServiceClient(
 	targetDir string,
 	fs VirtualFilesystem,
 	address string,
+	hashFactory HashFactory,
 ) *syncServiceClient {
 	return &syncServiceClient{
-		blockSize: blockSize,
-		targetDir: targetDir,
-		fs:        fs,
-		address:   address,
+		blockSize:   blockSize,
+		targetDir:   targetDir,
+		fs:          fs,
+		address:     address,
+		hashFactory: hashFactory,
 
 		serverHashedFiles: make([]HashedFile, 0),
 	}
@@ -233,13 +235,10 @@ func (c *syncServiceClient) PullHashedFiles() error {
 }
 
 func (c *syncServiceClient) PushAdjustmentCommands() error {
-	makeFastHash := func() hash.Hash32 { return NewMackerras(c.blockSize) }
-	makeStrongHash := func() hash.Hash { return md5.New() }
-
 	listedClientFiles, err := ListClientFiles(c.fs)
 	log.Printf("client listed %d files\n", len(listedClientFiles))
 
-	factory := NewProducerFactory(c.blockSize, makeFastHash, makeStrongHash)
+	factory := NewProducerFactory(c.blockSize, c.hashFactory)
 	comparator := NewFilesComparator(factory)
 	log.Println("comparing files...")
 	commands := comparator.Compare(listedClientFiles, c.serverHashedFiles)

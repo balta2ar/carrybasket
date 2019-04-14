@@ -5,7 +5,6 @@ import (
 	"crypto/md5"
 	"fmt"
 	"github.com/stretchr/testify/assert"
-	"hash"
 	"strings"
 	"testing"
 )
@@ -42,12 +41,8 @@ func assertGenerateProduceReconstruct(
 }
 
 func assertSyncOffline(t *testing.T, blockSize int, clientFiles []File, serverFiles []File) []AdjustmentCommand {
-	makeFastHash := func() hash.Hash32 { return NewMackerras(blockSize) }
-	makeStrongHash := func() hash.Hash { return md5.New() }
-
-	fastHasher := makeFastHash()
-	strongHasher := makeStrongHash()
-	generator := NewHashGenerator(blockSize, fastHasher, strongHasher)
+	hashFactory := NewHashFactory(blockSize)
+	generator := NewHashGenerator(blockSize, hashFactory.MakeFastHash(), hashFactory.MakeStrongHash())
 
 	clientFs := NewLoggingFilesystem()
 	createFiles(clientFs, clientFiles)
@@ -62,11 +57,11 @@ func assertSyncOffline(t *testing.T, blockSize int, clientFiles []File, serverFi
 	assert.Nil(t, err)
 	assert.Len(t, listedServerFiles, len(serverFiles))
 
-	factory := NewProducerFactory(blockSize, makeFastHash, makeStrongHash)
+	factory := NewProducerFactory(blockSize, hashFactory)
 	comparator := NewFilesComparator(factory)
 	commands := comparator.Compare(listedClientFiles, listedServerFiles)
 
-	reconstructor := NewContentReconstructor(strongHasher, serverContentCache)
+	reconstructor := NewContentReconstructor(hashFactory.MakeStrongHash(), serverContentCache)
 	applier := NewAdjustmentCommandApplier()
 	err = applier.Apply(commands, serverFs, reconstructor)
 	assert.Nil(t, err)

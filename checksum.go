@@ -1,6 +1,7 @@
 package carrybasket
 
 import (
+	"crypto/md5"
 	"hash"
 )
 
@@ -74,7 +75,25 @@ func (d *digest) Sum(in []byte) []byte {
 	return append(in, byte(s>>24), byte(s>>16), byte(s>>8), byte(s))
 }
 
-//func Checksum(data []byte) uint32 {
-//	d := NewMackerras()
-//	return uint32(update(Init, data))
-//}
+type HashFactory interface {
+	MakeFastHash() hash.Hash32
+	MakeStrongHash() hash.Hash
+}
+
+type hashFactory struct {
+	blockSize int
+}
+
+func NewHashFactory(blockSize int) *hashFactory {
+	return &hashFactory{
+		blockSize: blockSize,
+	}
+}
+
+func (hf *hashFactory) MakeFastHash() hash.Hash32 {
+	return NewMackerras(hf.blockSize)
+}
+
+func (hf *hashFactory) MakeStrongHash() hash.Hash {
+	return md5.New()
+}

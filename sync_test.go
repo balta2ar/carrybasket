@@ -122,8 +122,9 @@ func assertSyncOnline(
 	createFiles(clientFs, clientFiles)
 	createFiles(serverFs, serverFiles)
 
-	server := NewSyncServiceServer(blockSize, serverDir, serverFs, address)
-	client := NewSyncServiceClient(blockSize, clientDir, clientFs, address)
+	hashFactory := NewHashFactory(blockSize)
+	server := NewSyncServiceServer(blockSize, serverDir, serverFs, address, hashFactory)
+	client := NewSyncServiceClient(blockSize, clientDir, clientFs, address, hashFactory)
 
 	runClientServerCycle(t, client, server)
 	assertFilesystemsEqual(t, clientFs, serverFs)
@@ -210,8 +211,9 @@ func TestSync_ChangeHandler(t *testing.T) {
 	serverDir := "server"
 	clientDir := "client"
 
-	server := NewSyncServiceServer(blockSize, serverDir, serverFs, address)
-	client := NewSyncServiceClient(blockSize, clientDir, clientFs, address)
+	hashFactory := NewHashFactory(blockSize)
+	server := NewSyncServiceServer(blockSize, serverDir, serverFs, address, hashFactory)
+	client := NewSyncServiceClient(blockSize, clientDir, clientFs, address, hashFactory)
 	runner := NewClientServerRunner(client, server)
 	runner.StartServer()
 	runner.DialClient()
@@ -269,8 +271,9 @@ func TestSync_ActualFilesystem_Watcher(t *testing.T) {
 	createFiles(serverFs, serverFiles)
 	createFiles(clientFs, clientFiles)
 
-	server := NewSyncServiceServer(blockSize, serverDir, serverFs, address)
-	client := NewSyncServiceClient(blockSize, clientDir, clientFs, address)
+	hashFactory := NewHashFactory(blockSize)
+	server := NewSyncServiceServer(blockSize, serverDir, serverFs, address, hashFactory)
+	client := NewSyncServiceClient(blockSize, clientDir, clientFs, address, hashFactory)
 	runner := NewClientServerRunner(client, server)
 	runner.StartServer()
 	runner.DialClient()

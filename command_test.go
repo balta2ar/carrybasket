@@ -3,7 +3,6 @@ package carrybasket
 import (
 	"crypto/md5"
 	"github.com/stretchr/testify/assert"
-	"hash"
 	"io/ioutil"
 	"strings"
 	"testing"
@@ -14,11 +13,8 @@ func runComparator(
 	clientFiles []VirtualFile,
 	serverHashedFiles []HashedFile,
 ) []AdjustmentCommand {
-	factory := NewProducerFactory(
-		blockSize,
-		func() hash.Hash32 { return NewMackerras(blockSize) },
-		func() hash.Hash { return md5.New() },
-	)
+	hashFactory := NewHashFactory(blockSize)
+	factory := NewProducerFactory(blockSize, hashFactory)
 	comparator := NewFilesComparator(factory)
 	commands := comparator.Compare(clientFiles, serverHashedFiles)
 	return commands
@@ -27,8 +23,8 @@ func runComparator(
 func makeClientFile(filename string, isDir bool, content string) VirtualFile {
 	return VirtualFile{
 		Filename: filename,
-		IsDir: isDir,
-		Rw: NopReadCloser(strings.NewReader(content)),
+		IsDir:    isDir,
+		Rw:       NopReadCloser(strings.NewReader(content)),
 	}
 }
 
@@ -58,11 +54,8 @@ func makeServerFileAndGetContent(
 func TestFilesComparator_Smoke(t *testing.T) {
 	blockSize := 4
 
-	factory := NewProducerFactory(
-		blockSize,
-		func() hash.Hash32 { return NewMackerras(blockSize) },
-		func() hash.Hash { return md5.New() },
-	)
+	hashFactory := NewHashFactory(blockSize)
+	factory := NewProducerFactory(blockSize, hashFactory)
 	comparator := NewFilesComparator(factory)
 	commands := comparator.Compare(
 		[]VirtualFile{},
@@ -74,7 +67,7 @@ func TestFilesComparator_Smoke(t *testing.T) {
 func TestFilesComparator_RemoveOneOfTwoAndChange(t *testing.T) {
 	blockSize := 4
 	clientFiles := []VirtualFile{
-		{"b", false,  NopReadCloser(strings.NewReader("abc"))},
+		{"b", false, NopReadCloser(strings.NewReader("abc"))},
 	}
 	serverHashedFiles := []HashedFile{
 		{"a", false, nil, nil},
@@ -117,7 +110,7 @@ func TestFilesComparator_AddAndRemove(t *testing.T) {
 func TestFilesComparator_AddOneToEmpty(t *testing.T) {
 	blockSize := 4
 	clientFiles := []VirtualFile{
-		{"a", false,  NopReadCloser(strings.NewReader("abc"))},
+		{"a", false, NopReadCloser(strings.NewReader("abc"))},
 	}
 	serverHashedFiles := []HashedFile{}
 	commands := runComparator(blockSize, clientFiles, serverHashedFiles)
