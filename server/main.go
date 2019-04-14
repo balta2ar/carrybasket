@@ -22,8 +22,8 @@ func action(c *cli.Context) error {
 	address := "localhost:20000"
 
 	log.Printf(
-		"starting server: blockSize %v, targetDir %v, address %v\n",
-		blockSize, targetDir, address,
+		"starting server: blockSize %v, targetDir %v, address %v (pid %v)\n",
+		blockSize, targetDir, address, os.Getpid(),
 	)
 	os.Chdir(targetDir)
 	server := carrybasket.NewSyncServiceServer(blockSize, targetDir, fs, address)

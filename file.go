@@ -22,14 +22,14 @@ type HashedFile struct {
 type VirtualFile struct {
 	Filename string
 	IsDir    bool
-	Rw       io.Reader
+	Rw       io.ReadCloser
 }
 
 type VirtualFilesystem interface {
 	Move(sourceFilename string, destFilename string) error
 	Delete(filename string) error
-	OpenRead(filename string) (io.Reader, error)
-	OpenWrite(filename string) (io.Writer, error)
+	OpenRead(filename string) (io.ReadCloser, error)
+	OpenWrite(filename string) (io.WriteCloser, error)
 	IsPath(filename string) bool
 	IsDir(filename string) bool
 	Mkdir(filename string) error
@@ -71,7 +71,7 @@ func (lf *loggingFilesystem) Delete(filename string) error {
 	return errors.New("file does not exist")
 }
 
-func (lf *loggingFilesystem) OpenRead(filename string) (io.Reader, error) {
+func (lf *loggingFilesystem) OpenRead(filename string) (io.ReadCloser, error) {
 	lf.Actions = append(lf.Actions, fmt.Sprintf("openread %v", filename))
 	r, ok := lf.storage[filename]
 	if !ok {
@@ -87,10 +87,10 @@ func (lf *loggingFilesystem) OpenRead(filename string) (io.Reader, error) {
 	// This is a terrible thing to do, but it's fine since this
 	// concrete implementation is only supposed to be used in
 	// tests.
-	return strings.NewReader(r.String()), nil
+	return NopReadCloser(strings.NewReader(r.String())), nil
 }
 
-func (lf *loggingFilesystem) OpenWrite(filename string) (io.Writer, error) {
+func (lf *loggingFilesystem) OpenWrite(filename string) (io.WriteCloser, error) {
 	lf.Actions = append(lf.Actions, fmt.Sprintf("openwrite %v", filename))
 	rw, ok := lf.storage[filename]
 	if ok && (rw == nil) {
@@ -99,7 +99,7 @@ func (lf *loggingFilesystem) OpenWrite(filename string) (io.Writer, error) {
 
 	buffer := &strings.Builder{}
 	lf.storage[filename] = buffer
-	return buffer, nil
+	return NopWriteCloser(buffer), nil
 
 }
 
@@ -168,11 +168,11 @@ func (lf *actualFilesystem) Delete(filename string) error {
 	return os.RemoveAll(lf.prefixed(filename))
 }
 
-func (lf *actualFilesystem) OpenRead(filename string) (io.Reader, error) {
+func (lf *actualFilesystem) OpenRead(filename string) (io.ReadCloser, error) {
 	return os.Open(lf.prefixed(filename))
 }
 
-func (lf *actualFilesystem) OpenWrite(filename string) (io.Writer, error) {
+func (lf *actualFilesystem) OpenWrite(filename string) (io.WriteCloser, error) {
 	if err := os.MkdirAll(
 		filepath.Dir(lf.prefixed(filename)),
 		os.ModeDir|0755,
@@ -273,6 +273,7 @@ func ListServerFiles(
 			}
 			generator.Reset()
 			generatorResult := generator.Scan(r)
+			r.Close()
 			serverFiles = append(serverFiles, HashedFile{
 				Filename:     filename,
 				IsDir:        false,
@@ -283,6 +284,7 @@ func ListServerFiles(
 				contentCache.AddContents(
 					generatorResult.strongHashes, generatorResult.contentBlocks)
 			}
+
 		}
 	}
 

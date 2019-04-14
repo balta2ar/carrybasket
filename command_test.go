@@ -25,7 +25,11 @@ func runComparator(
 }
 
 func makeClientFile(filename string, isDir bool, content string) VirtualFile {
-	return VirtualFile{filename, isDir, strings.NewReader(content)}
+	return VirtualFile{
+		Filename: filename,
+		IsDir: isDir,
+		Rw: NopReadCloser(strings.NewReader(content)),
+	}
 }
 
 func makeServerFile(blockSize int, filename string, isDir bool, content string) HashedFile {
@@ -70,7 +74,7 @@ func TestFilesComparator_Smoke(t *testing.T) {
 func TestFilesComparator_RemoveOneOfTwoAndChange(t *testing.T) {
 	blockSize := 4
 	clientFiles := []VirtualFile{
-		{"b", false, strings.NewReader("abc")},
+		{"b", false,  NopReadCloser(strings.NewReader("abc"))},
 	}
 	serverHashedFiles := []HashedFile{
 		{"a", false, nil, nil},
@@ -113,7 +117,7 @@ func TestFilesComparator_AddAndRemove(t *testing.T) {
 func TestFilesComparator_AddOneToEmpty(t *testing.T) {
 	blockSize := 4
 	clientFiles := []VirtualFile{
-		{"a", false, strings.NewReader("abc")},
+		{"a", false,  NopReadCloser(strings.NewReader("abc"))},
 	}
 	serverHashedFiles := []HashedFile{}
 	commands := runComparator(blockSize, clientFiles, serverHashedFiles)
