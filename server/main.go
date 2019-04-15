@@ -19,7 +19,7 @@ func action(c *cli.Context) error {
 
 	blockSize := 64 * 1024
 	fs := carrybasket.NewActualFilesystem(".")
-	address := "localhost:20000"
+	address := "0.0.0.0:20000"
 
 	log.Printf(
 		"starting server: blockSize %v, targetDir %v, address %v (pid %v)\n",
